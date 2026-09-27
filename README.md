@@ -12,18 +12,18 @@ compact validation results and source hashes. The current Helios actor variant i
 an isolated patch: the base model/trainer remains the Alibaba version so the
 Helios change cannot silently alter Alibaba replication.
 
-- [Current run status and source-version limits](RUN_STATUS.md)
+- [Recorded experiment protocols](RUN_STATUS.md)
 - [Prepare and run recorded experiments](reproduction/README.md)
 - [Five-seed Alibaba results](results/alibaba_5seeds.csv)
 
-Alibaba seeds 1–2 require the old trainer `d103…`; seeds 3–5 use the entropy
-hotfix `ba7c…`. Preparation restores and verifies the appropriate source in a
+Alibaba seeds 1–2 require the old trainer `d103…`; seeds 3–5 use the masked-entropy
+variant `ba7c…`. Preparation restores and verifies the appropriate source in a
 separate directory. Seed 3's historical resume at episode 224 must be distinguished
-from a fresh run using the hotfix from the beginning.
+from a fresh run using the variant from the beginning.
 
-Helios corrected seed 1 is currently training on Lightning. The committed Helios
-CSV files describe the **prior** 300-episode pilot, which did not outperform RPA
-on stress reward. They do not establish performance of the corrected architecture.
+The Helios job-conditioned seed-1 experiment is in progress as of 2026-09-27.
+The committed Helios CSV files describe the **prior** 300-episode pilot, which did not outperform RPA
+on stress reward. They do not establish performance of the job-conditioned architecture.
 Seeds 2–5 remain pending that pilot's evaluation.
 
 ## Dependencies and checks
