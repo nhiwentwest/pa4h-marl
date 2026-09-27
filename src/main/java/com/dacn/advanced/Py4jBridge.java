@@ -44,7 +44,7 @@ public class Py4jBridge {
     // --- Simulation Config ---
     private static final double INTERVAL = 300.0;
     private static final double MAX_TIME = 86400.0;
-    private static final int NUM_HOSTS = 20;
+    private static final int NUM_HOSTS = Integer.parseInt(System.getenv().getOrDefault("NUM_HOSTS", "64"));
     private static final int HOST_PES = 2;              // Beloglazov Table 5: HP G5
     private static final int HOST_MIPS = 2660;           // HP G5: 2660 MIPS/PE (Xeon 3075)
     private static final int HOST_RAM = 16384;           // 16GB

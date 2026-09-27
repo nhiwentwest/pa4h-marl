@@ -1,0 +1,88 @@
+{
+  "schema": "pa4h-helios-action-conditioned-v3",
+  "dataset": "HeliosData Earth",
+  "seed_ids": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "episodes": 300,
+  "data_provenance": {
+    "raw_csv": "/teamspace/studios/this_studio/pa4h_data/helios_cluster_log.csv",
+    "converted_csv": "/teamspace/studios/this_studio/pa4h_data/helios_earth_pod_hourly_jobs.csv",
+    "converted_csv_sha256": "7bed08070ef3332d33081fd95327d9254cb1199683a17de2bb06b5c1ddbdc531",
+    "converted_rows": 427148,
+    "power_root": "/teamspace/studios/this_studio/pa4h_data/extracted",
+    "power_source": "NLR submission 312, 41 training profiles, 0.2-second traces",
+    "power_assignment": "model_type=unknown; deterministic job-id hash selects a profile from the compatible registry"
+  },
+  "training_workload": {
+    "start_hour": 1000,
+    "window_hours": 10,
+    "subsample": 0.5,
+    "max_steps": 180,
+    "interval_sec": 300,
+    "seed_1_matched_jobs_preflight": 358
+  },
+  "validation_workload": {
+    "start_hour": 1010,
+    "window_hours": 10,
+    "subsample": 0.05,
+    "max_steps": 180,
+    "seed_1_matched_jobs_preflight": 167,
+    "decoders": [
+      "sequence",
+      "pointwise"
+    ]
+  },
+  "holdout_workload": {
+    "start_hour": 1020,
+    "window_hours": 10,
+    "status": "reserved; do not evaluate during this pilot"
+  },
+  "model": {
+    "hosts": 64,
+    "use_stgnn": true,
+    "rack_history_len": 6,
+    "use_counterfactual_supervision": true,
+    "team_violation_weight": 8.0,
+    "relief_violation_weight": 8.0,
+    "safety_shield": false,
+    "rack_score_head": "nonlinear job-conditioned, aligned per-action counterfactual utility"
+  },
+  "training_source": {
+    "reference": "outputs/helios_conditioned_source_reference",
+    "marl_gang_train_sha256": "df1dcba0947759c71d268c19f2540bf6f956dd78410537020758ec9bd2a8605d",
+    "models_sha256": "4a71dade84f3a1e6e9df8f9ed15a549691cfd9c1df9143970c5cc01e287c7aaf"
+  },
+  "notes": [
+    "Train, validation, and holdout windows are disjoint.",
+    "Helios arrival volume is non-uniform: preflight yielded 38 matched train jobs and 167 matched validation jobs at the same deterministic 5% subsample.",
+    "Helios job model family is unknown; NLR power traces are a deterministic proxy mapping, not Helios-measured power telemetry.",
+    "This is a one-seed pilot on the v5 rack-priority candidate, not a statistical five-seed result.",
+    "Training load selected using train-only A2/A3 choice coverage, not validation scores.",
+    "50% training is a new protocol, not reproduction of the historical 38-job draft table.",
+    "Seed 2\u20135 remain gated pending pilot evaluation; do not launch the batch automatically.",
+    "Fresh seed 1: fixes common-context cancellation in linear rack scoring. No changes to workload, rewards, baseline, decoder or power allocator."
+  ],
+  "validation_stress_workload": {
+    "start_hour": 1010,
+    "window_hours": 10,
+    "subsample": 0.5,
+    "max_steps": 180,
+    "decoders": [
+      "sequence",
+      "pointwise"
+    ],
+    "purpose": "Prespecified stress evaluation; primary 5% validation retained"
+  },
+  "numerical_hotfix": {
+    "name": "finite zero counterfactual loss",
+    "applied_after_episode": 0,
+    "failing_rollout_episodes": [],
+    "prior_trainer_sha256": "ba7c4dd8f262cc722048a442f1e2b08c8542cca792b3ee722c90b8018e0309b4",
+    "mathematics": "No informative counterfactual rows: zero loss and zero gradient remain unchanged."
+  }
+}

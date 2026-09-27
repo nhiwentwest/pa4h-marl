@@ -1,0 +1,118 @@
+--- a/python/models.py
++++ b/python/models.py
+@@ -133,7 +133,8 @@
+     """
+ 
+     def __init__(self, num_racks, history_len, feat_dim, context_dim=0,
+-                 include_defer=False, hidden=64, heads=4, gat_layers=2):
++                 include_defer=False, hidden=64, heads=4, gat_layers=2,
++                 action_context_dim=0):
+         super().__init__()
+         self.num_racks = int(num_racks)
+         self.history_len = int(history_len)
+@@ -144,6 +145,12 @@
+         self.graph_dim = self.num_racks * self.history_len * self.feat_dim
+         self.obs_dim = self.graph_dim + self.context_dim
+         self.action_dim = self.num_racks + (1 if self.include_defer else 0)
++        self.action_context_dim = int(action_context_dim)
++        if self.action_context_dim not in (0, self.action_dim):
++            raise ValueError("action_context_dim must be zero or the action count")
++        if self.context_dim < self.action_context_dim:
++            raise ValueError("context must include the per-action utility tail")
++        global_context_dim = self.context_dim - self.action_context_dim
+ 
+         self.input_proj = nn.Linear(self.feat_dim, self.hidden)
+         self.tcn = nn.Sequential(
+@@ -161,18 +168,20 @@
+         self.global_mlp = nn.Sequential(
+             nn.Linear(self.hidden, self.hidden), nn.GELU(),
+             nn.LayerNorm(self.hidden))
+-        score_in = self.hidden * 2 + self.context_dim
+-        self.score_head = nn.Linear(score_in, 1)
++        score_in = self.hidden * 2 + global_context_dim + bool(self.action_context_dim)
++        self.score_head = (nn.Sequential(nn.Linear(score_in, self.hidden),
++                                        nn.GELU(), nn.Linear(self.hidden, 1))
++                           if self.action_context_dim else nn.Linear(score_in, 1))
+         if self.include_defer:
+             self.defer_head = nn.Sequential(
+-                nn.Linear(self.hidden + self.context_dim, self.hidden),
++                nn.Linear(self.hidden + global_context_dim + bool(self.action_context_dim), self.hidden),
+                 nn.GELU(),
+                 nn.Linear(self.hidden, 1))
+         # Auxiliary representation heads (A4): per-rack feasibility and
+         # forced-DEFER prediction, trained with BCE after the PPO update.
+         self.aux_feas_head = nn.Linear(score_in, 1)
+         self.aux_forced_head = nn.Sequential(
+-            nn.Linear(self.hidden + self.context_dim, self.hidden),
++            nn.Linear(self.hidden + global_context_dim, self.hidden),
+             nn.GELU(),
+             nn.Linear(self.hidden, 1))
+ 
+@@ -207,14 +216,26 @@
+         g = self.global_mlp(z.mean(dim=1))                        # [B,H]
+         return z, g, ctx
+ 
++    def _scoring_inputs(self, z, g, ctx):
++        # Action utilities are indexed by rack. Broadcasting the complete vector
++        # to a linear head added a common offset and canceled under softmax.
++        utility = ctx[:, -self.action_context_dim:] if self.action_context_dim else None
++        global_ctx = ctx[:, :-self.action_context_dim] if self.action_context_dim else ctx
++        gc = torch.cat([g, global_ctx], dim=-1)
++        per_rack = torch.cat(
++            [z, gc.unsqueeze(1).expand(-1, self.num_racks, -1)], dim=-1)
++        if utility is not None:
++            per_rack = torch.cat([per_rack, utility[:, :self.num_racks].unsqueeze(-1)], dim=-1)
++        defer_input = (torch.cat([gc, utility[:, -1:]], dim=-1)
++                       if utility is not None and self.include_defer else gc)
++        return per_rack, gc, defer_input
++
+     def forward(self, x, mask=None):
+         z, g, ctx = self._encode(x)
+-        gc = torch.cat([g, ctx], dim=-1)
+-        per_rack = torch.cat(
+-            [z, gc.unsqueeze(1).expand(-1, self.num_racks, -1)], dim=-1)
++        per_rack, gc, defer_input = self._scoring_inputs(z, g, ctx)
+         logits = self.score_head(per_rack).squeeze(-1)            # [B,R]
+         if self.include_defer:
+-            defer = self.defer_head(gc)                           # [B,1]
++            defer = self.defer_head(defer_input)                  # [B,1]
+             logits = torch.cat([logits, defer], dim=-1)
+         if mask is not None:
+             if mask.dim() == 1:
+@@ -225,9 +246,7 @@
+     def auxiliary(self, x):
+         """Return (per-rack feasibility logits [B,R], forced-DEFER logits [B])."""
+         z, g, ctx = self._encode(x)
+-        gc = torch.cat([g, ctx], dim=-1)
+-        per_rack = torch.cat(
+-            [z, gc.unsqueeze(1).expand(-1, self.num_racks, -1)], dim=-1)
++        per_rack, gc, _ = self._scoring_inputs(z, g, ctx)
+         feas = self.aux_feas_head(per_rack).squeeze(-1)
+         forced = self.aux_forced_head(gc).squeeze(-1)
+         return feas, forced
+--- a/python/marl_gang_train.py
++++ b/python/marl_gang_train.py
+@@ -130,11 +130,11 @@
+         if self.use_stgnn:
+             self.actors["a2"] = RackSTGNNActor(
+                 NR, RACK_HISTORY_LEN, RACK_OBS_DIM, context_dim=NR,
+-                include_defer=False).to(DEVICE)
++                include_defer=False, action_context_dim=NR).to(DEVICE)
+             self.actors["a4"] = RackSTGNNActor(
+                 NR, RACK_HISTORY_LEN, RACK_OBS_DIM,
+                 context_dim=JOB_OBS_DIM + NETWORK_OBS_DIM + NR + 1,
+-                include_defer=True).to(DEVICE)
++                include_defer=True, action_context_dim=NR + 1).to(DEVICE)
+         else:
+             self.actors["a2"] = Actor(*self.dims["a2"]).to(DEVICE)
+             self.actors["a4"] = Actor(*self.dims["a4"]).to(DEVICE)
+@@ -321,7 +321,8 @@
+     worst_u = torch.where(legal, utilities, pos_inf).min(dim=1).values
+     informative = (legal.sum(dim=1) > 1) & ((best_u - worst_u) > gap_eps)
+     if not bool(informative.any()):
+-        return logits.sum() * 0.0, 0
++        # Masked logits contain -inf; the zero-loss branch must stay finite.
++        return logits.masked_fill(~torch.isfinite(logits), 0.0).sum() * 0.0, 0
+     # Share target mass between numerically tied best actions instead of choosing
+     # an arbitrary rack/victim.
+     target_mask = legal & (utilities >= (best_u.unsqueeze(1) - gap_eps))

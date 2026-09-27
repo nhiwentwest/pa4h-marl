@@ -1,0 +1,579 @@
+{
+  "1": {
+    "config": {
+      "env": {
+        "SEED": "1",
+        "NUM_EPISODES": "300",
+        "NUM_HOSTS": "64",
+        "MAX_STEPS": "120",
+        "GANG_MAX_STEPS": "120",
+        "BATCH_EPISODES": "4",
+        "USE_STGNN": "1",
+        "USE_HISTORY_MLP": "0",
+        "RACK_HISTORY_LEN": "6",
+        "USE_CF_SUPERVISION": "1",
+        "SUBSAMPLE": "0.03",
+        "WORKLOAD_START_HOUR": "1000",
+        "WORKLOAD_WINDOW_HOURS": "10",
+        "LR": "0.0003",
+        "PPO_EPOCHS": "4",
+        "GAMMA": "0.99",
+        "GAE_LAMBDA": "0.95",
+        "EARLY_STOP_PATIENCE": "0",
+        "A1_VIOL_WEIGHT": "8",
+        "RELIEF_TEAM_ADV_COEF": "0.05",
+        "A4_TEAM_ADV_COEF": "0.15",
+        "CF_AUX_COEF": "1",
+        "W_SERVE": "1",
+        "W_ENERGY": "0.3",
+        "W_VIOL": "8",
+        "W_WAIT": "1",
+        "W_CKPT": "0.15",
+        "W_SLA_BASE": "0.5",
+        "W_DEADLINE": "2",
+        "SLA_TARGET_ADMISSION": "0.2",
+        "SLA_TARGET_RESTART": "0.2",
+        "SLA_TARGET_COMPLETION": "0.2",
+        "SLA_DUAL_LR": "0.1",
+        "SLA_MAX_WAIT_STEPS": "12",
+        "SLA_MAX_RESTART_WAIT_STEPS": "12",
+        "SLA_COMPLETION_GRACE_STEPS": "12",
+        "SLA_DROP_SEVERITY": "2",
+        "NET_COMM_TAX": "0.3",
+        "RACK_OVERSUB": "1.2",
+        "GANG_LINK_MBPS": "1000",
+        "NETWORK_BACKGROUND_UTIL": "0",
+        "FEAS_MARGIN": "0.98",
+        "INTERVAL_SEC": "300"
+      },
+      "python": "3.12.3",
+      "torch": "2.13.0+cu130",
+      "trainer_defaults": {
+        "ENT_COEF": 0.01,
+        "ENT_FLOOR_PENALTY": 0.1,
+        "ENT_ADAPT_LR": 0.1,
+        "ENT_COEF_MAX": 1.0,
+        "RELIEF_SLA_WEIGHT": 0.1,
+        "REWARD_SCALE": 1.0,
+        "CF_GAP_EPS": 1e-06,
+        "CLIP": 0.2
+      },
+      "reference": "v5 seed-1 200 episode source; rack-priority candidate"
+    },
+    "protocol": {
+      "schema": "pa4h-v5-rack-priority-repair-v1",
+      "status": "single-candidate-run",
+      "seed": 1,
+      "episodes": 300,
+      "starting_checkpoint": null,
+      "training_workload": {
+        "start_hour": 1000,
+        "window_hours": 10,
+        "subsample": 0.03
+      },
+      "rack_priority_change": {
+        "previous_team_violation_weight": 2.0,
+        "previous_relief_violation_weight": 3.0,
+        "team_violation_weight": 8.0,
+        "relief_violation_weight": 8.0,
+        "rationale": "The seed-1 audit showed an exact predicted rack-risk event where global relief 0.01133, energy benefit 0.01363, immediate cost 0.09505, and SLA proxy 0.00216 produced negative delta utility at weight 3; the break-even weight is approximately 7.37. Set both weights to 8 for this one rack-priority candidate."
+      },
+      "evaluation_windows": [
+        {
+          "start_hour": 980,
+          "window_hours": 10,
+          "subsample": 0.01
+        },
+        {
+          "start_hour": 990,
+          "window_hours": 10,
+          "subsample": 0.01
+        },
+        {
+          "start_hour": 1010,
+          "window_hours": 10,
+          "subsample": 0.01
+        },
+        {
+          "start_hour": 980,
+          "window_hours": 10,
+          "subsample": 0.05
+        },
+        {
+          "start_hour": 990,
+          "window_hours": 10,
+          "subsample": 0.05
+        }
+      ],
+      "scope": "No simulator, architecture, placement, or safety-override changes. Report rack violations with SLA, completion, preemption, energy, and reward; this candidate does not promise zero violations."
+    },
+    "trainer_sha256": "d10309428215ec4e23066c7d19af016ae7f38edf0f2fd9143190c2c602b2a761"
+  },
+  "2": {
+    "config": {
+      "env": {
+        "SEED": "2",
+        "NUM_EPISODES": "300",
+        "NUM_HOSTS": "64",
+        "MAX_STEPS": "120",
+        "GANG_MAX_STEPS": "120",
+        "BATCH_EPISODES": "4",
+        "USE_STGNN": "1",
+        "USE_HISTORY_MLP": "0",
+        "RACK_HISTORY_LEN": "6",
+        "USE_CF_SUPERVISION": "1",
+        "SUBSAMPLE": "0.03",
+        "WORKLOAD_START_HOUR": "1000",
+        "WORKLOAD_WINDOW_HOURS": "10",
+        "LR": "0.0003",
+        "PPO_EPOCHS": "4",
+        "GAMMA": "0.99",
+        "GAE_LAMBDA": "0.95",
+        "EARLY_STOP_PATIENCE": "0",
+        "A1_VIOL_WEIGHT": "8",
+        "RELIEF_TEAM_ADV_COEF": "0.05",
+        "A4_TEAM_ADV_COEF": "0.15",
+        "CF_AUX_COEF": "1",
+        "W_SERVE": "1",
+        "W_ENERGY": "0.3",
+        "W_VIOL": "8",
+        "W_WAIT": "1",
+        "W_CKPT": "0.15",
+        "W_SLA_BASE": "0.5",
+        "W_DEADLINE": "2",
+        "SLA_TARGET_ADMISSION": "0.2",
+        "SLA_TARGET_RESTART": "0.2",
+        "SLA_TARGET_COMPLETION": "0.2",
+        "SLA_DUAL_LR": "0.1",
+        "SLA_MAX_WAIT_STEPS": "12",
+        "SLA_MAX_RESTART_WAIT_STEPS": "12",
+        "SLA_COMPLETION_GRACE_STEPS": "12",
+        "SLA_DROP_SEVERITY": "2",
+        "NET_COMM_TAX": "0.3",
+        "RACK_OVERSUB": "1.2",
+        "GANG_LINK_MBPS": "1000",
+        "NETWORK_BACKGROUND_UTIL": "0",
+        "FEAS_MARGIN": "0.98",
+        "INTERVAL_SEC": "300"
+      },
+      "python": "3.12.3",
+      "torch": "2.13.0+cu130",
+      "trainer_defaults": {
+        "ENT_COEF": 0.01,
+        "ENT_FLOOR_PENALTY": 0.1,
+        "ENT_ADAPT_LR": 0.1,
+        "ENT_COEF_MAX": 1.0,
+        "RELIEF_SLA_WEIGHT": 0.1,
+        "REWARD_SCALE": 1.0,
+        "CF_GAP_EPS": 1e-06,
+        "CLIP": 0.2
+      },
+      "reference": "v5 300-episode rack-priority candidate"
+    },
+    "protocol": {
+      "schema": "pa4h-v5-rack-priority-repair-v1",
+      "status": "multi-seed-rack-priority-run",
+      "seed": 2,
+      "episodes": 300,
+      "starting_checkpoint": null,
+      "training_workload": {
+        "start_hour": 1000,
+        "window_hours": 10,
+        "subsample": 0.03
+      },
+      "rack_priority_change": {
+        "previous_team_violation_weight": 2.0,
+        "previous_relief_violation_weight": 3.0,
+        "team_violation_weight": 8.0,
+        "relief_violation_weight": 8.0,
+        "rationale": "The seed-1 audit showed an exact predicted rack-risk event where global relief 0.01133, energy benefit 0.01363, immediate cost 0.09505, and SLA proxy 0.00216 produced negative delta utility at weight 3; the break-even weight is approximately 7.37. Set both weights to 8 for this one rack-priority candidate."
+      },
+      "evaluation_windows": [
+        {
+          "start_hour": 980,
+          "window_hours": 10,
+          "subsample": 0.01
+        },
+        {
+          "start_hour": 990,
+          "window_hours": 10,
+          "subsample": 0.01
+        },
+        {
+          "start_hour": 1010,
+          "window_hours": 10,
+          "subsample": 0.01
+        },
+        {
+          "start_hour": 980,
+          "window_hours": 10,
+          "subsample": 0.05
+        },
+        {
+          "start_hour": 990,
+          "window_hours": 10,
+          "subsample": 0.05
+        }
+      ],
+      "scope": "No simulator, architecture, placement, or safety-override changes. Report rack violations with SLA, completion, preemption, energy, and reward; this candidate does not promise zero violations."
+    },
+    "trainer_sha256": "d10309428215ec4e23066c7d19af016ae7f38edf0f2fd9143190c2c602b2a761"
+  },
+  "3": {
+    "config": {
+      "env": {
+        "SEED": "3",
+        "NUM_EPISODES": "300",
+        "NUM_HOSTS": "64",
+        "MAX_STEPS": "120",
+        "GANG_MAX_STEPS": "120",
+        "BATCH_EPISODES": "4",
+        "USE_STGNN": "1",
+        "USE_HISTORY_MLP": "0",
+        "RACK_HISTORY_LEN": "6",
+        "USE_CF_SUPERVISION": "1",
+        "SUBSAMPLE": "0.03",
+        "WORKLOAD_START_HOUR": "1000",
+        "WORKLOAD_WINDOW_HOURS": "10",
+        "LR": "0.0003",
+        "PPO_EPOCHS": "4",
+        "GAMMA": "0.99",
+        "GAE_LAMBDA": "0.95",
+        "EARLY_STOP_PATIENCE": "0",
+        "A1_VIOL_WEIGHT": "8",
+        "RELIEF_TEAM_ADV_COEF": "0.05",
+        "A4_TEAM_ADV_COEF": "0.15",
+        "CF_AUX_COEF": "1",
+        "W_SERVE": "1",
+        "W_ENERGY": "0.3",
+        "W_VIOL": "8",
+        "W_WAIT": "1",
+        "W_CKPT": "0.15",
+        "W_SLA_BASE": "0.5",
+        "W_DEADLINE": "2",
+        "SLA_TARGET_ADMISSION": "0.2",
+        "SLA_TARGET_RESTART": "0.2",
+        "SLA_TARGET_COMPLETION": "0.2",
+        "SLA_DUAL_LR": "0.1",
+        "SLA_MAX_WAIT_STEPS": "12",
+        "SLA_MAX_RESTART_WAIT_STEPS": "12",
+        "SLA_COMPLETION_GRACE_STEPS": "12",
+        "SLA_DROP_SEVERITY": "2",
+        "NET_COMM_TAX": "0.3",
+        "RACK_OVERSUB": "1.2",
+        "GANG_LINK_MBPS": "1000",
+        "NETWORK_BACKGROUND_UTIL": "0",
+        "FEAS_MARGIN": "0.98",
+        "INTERVAL_SEC": "300"
+      },
+      "python": "3.12.3",
+      "torch": "2.13.0+cu130",
+      "trainer_defaults": {
+        "ENT_COEF": 0.01,
+        "ENT_FLOOR_PENALTY": 0.1,
+        "ENT_ADAPT_LR": 0.1,
+        "ENT_COEF_MAX": 1.0,
+        "RELIEF_SLA_WEIGHT": 0.1,
+        "REWARD_SCALE": 1.0,
+        "CF_GAP_EPS": 1e-06,
+        "CLIP": 0.2
+      },
+      "reference": "v5 300-episode rack-priority candidate"
+    },
+    "protocol": {
+      "schema": "pa4h-v5-rack-priority-repair-v1",
+      "status": "multi-seed-rack-priority-run",
+      "seed": 3,
+      "episodes": 300,
+      "starting_checkpoint": null,
+      "training_workload": {
+        "start_hour": 1000,
+        "window_hours": 10,
+        "subsample": 0.03
+      },
+      "rack_priority_change": {
+        "previous_team_violation_weight": 2.0,
+        "previous_relief_violation_weight": 3.0,
+        "team_violation_weight": 8.0,
+        "relief_violation_weight": 8.0,
+        "rationale": "The seed-1 audit showed an exact predicted rack-risk event where global relief 0.01133, energy benefit 0.01363, immediate cost 0.09505, and SLA proxy 0.00216 produced negative delta utility at weight 3; the break-even weight is approximately 7.37. Set both weights to 8 for this one rack-priority candidate."
+      },
+      "evaluation_windows": [
+        {
+          "start_hour": 980,
+          "window_hours": 10,
+          "subsample": 0.01
+        },
+        {
+          "start_hour": 990,
+          "window_hours": 10,
+          "subsample": 0.01
+        },
+        {
+          "start_hour": 1010,
+          "window_hours": 10,
+          "subsample": 0.01
+        },
+        {
+          "start_hour": 980,
+          "window_hours": 10,
+          "subsample": 0.05
+        },
+        {
+          "start_hour": 990,
+          "window_hours": 10,
+          "subsample": 0.05
+        }
+      ],
+      "scope": "No simulator, architecture, placement, or safety-override changes. Report rack violations with SLA, completion, preemption, energy, and reward; this candidate does not promise zero violations.",
+      "numeric_stability_hotfix": {
+        "id": "masked-categorical-entropy-gradient-finite",
+        "applied_on": "2026-09-26",
+        "torch_observed": "2.13.0+cu130",
+        "issue": "During seed 3 replay, Categorical entropy backprop produced non-finite A2 gradients with illegal actions represented by -inf logits.",
+        "change": "Compute entropy from log_softmax and replace non-finite log-prob entries with zero before p*log(p); the masked categorical entropy objective is unchanged.",
+        "validation": "Exact seed-3 episodes 224-227 replay completed one PPO update with all model parameters finite.",
+        "trainer_sha256": "ba7c4dd8f262cc722048a442f1e2b08c8542cca792b3ee722c90b8018e0309b4"
+      }
+    },
+    "trainer_sha256": "ba7c4dd8f262cc722048a442f1e2b08c8542cca792b3ee722c90b8018e0309b4"
+  },
+  "4": {
+    "config": {
+      "env": {
+        "SEED": "4",
+        "NUM_EPISODES": "300",
+        "NUM_HOSTS": "64",
+        "MAX_STEPS": "120",
+        "GANG_MAX_STEPS": "120",
+        "BATCH_EPISODES": "4",
+        "USE_STGNN": "1",
+        "USE_HISTORY_MLP": "0",
+        "RACK_HISTORY_LEN": "6",
+        "USE_CF_SUPERVISION": "1",
+        "SUBSAMPLE": "0.03",
+        "WORKLOAD_START_HOUR": "1000",
+        "WORKLOAD_WINDOW_HOURS": "10",
+        "LR": "0.0003",
+        "PPO_EPOCHS": "4",
+        "GAMMA": "0.99",
+        "GAE_LAMBDA": "0.95",
+        "EARLY_STOP_PATIENCE": "0",
+        "A1_VIOL_WEIGHT": "8",
+        "RELIEF_TEAM_ADV_COEF": "0.05",
+        "A4_TEAM_ADV_COEF": "0.15",
+        "CF_AUX_COEF": "1",
+        "W_SERVE": "1",
+        "W_ENERGY": "0.3",
+        "W_VIOL": "8",
+        "W_WAIT": "1",
+        "W_CKPT": "0.15",
+        "W_SLA_BASE": "0.5",
+        "W_DEADLINE": "2",
+        "SLA_TARGET_ADMISSION": "0.2",
+        "SLA_TARGET_RESTART": "0.2",
+        "SLA_TARGET_COMPLETION": "0.2",
+        "SLA_DUAL_LR": "0.1",
+        "SLA_MAX_WAIT_STEPS": "12",
+        "SLA_MAX_RESTART_WAIT_STEPS": "12",
+        "SLA_COMPLETION_GRACE_STEPS": "12",
+        "SLA_DROP_SEVERITY": "2",
+        "NET_COMM_TAX": "0.3",
+        "RACK_OVERSUB": "1.2",
+        "GANG_LINK_MBPS": "1000",
+        "NETWORK_BACKGROUND_UTIL": "0",
+        "FEAS_MARGIN": "0.98",
+        "INTERVAL_SEC": "300"
+      },
+      "python": "3.12.3",
+      "torch": "2.13.0+cu130",
+      "trainer_defaults": {
+        "ENT_COEF": 0.01,
+        "ENT_FLOOR_PENALTY": 0.1,
+        "ENT_ADAPT_LR": 0.1,
+        "ENT_COEF_MAX": 1.0,
+        "RELIEF_SLA_WEIGHT": 0.1,
+        "REWARD_SCALE": 1.0,
+        "CF_GAP_EPS": 1e-06,
+        "CLIP": 0.2
+      },
+      "reference": "v5 300-episode rack-priority candidate"
+    },
+    "protocol": {
+      "schema": "pa4h-v5-rack-priority-repair-v1",
+      "status": "multi-seed-rack-priority-run",
+      "seed": 4,
+      "episodes": 300,
+      "starting_checkpoint": null,
+      "training_workload": {
+        "start_hour": 1000,
+        "window_hours": 10,
+        "subsample": 0.03
+      },
+      "rack_priority_change": {
+        "previous_team_violation_weight": 2.0,
+        "previous_relief_violation_weight": 3.0,
+        "team_violation_weight": 8.0,
+        "relief_violation_weight": 8.0,
+        "rationale": "The seed-1 audit showed an exact predicted rack-risk event where global relief 0.01133, energy benefit 0.01363, immediate cost 0.09505, and SLA proxy 0.00216 produced negative delta utility at weight 3; the break-even weight is approximately 7.37. Set both weights to 8 for this one rack-priority candidate."
+      },
+      "evaluation_windows": [
+        {
+          "start_hour": 980,
+          "window_hours": 10,
+          "subsample": 0.01
+        },
+        {
+          "start_hour": 990,
+          "window_hours": 10,
+          "subsample": 0.01
+        },
+        {
+          "start_hour": 1010,
+          "window_hours": 10,
+          "subsample": 0.01
+        },
+        {
+          "start_hour": 980,
+          "window_hours": 10,
+          "subsample": 0.05
+        },
+        {
+          "start_hour": 990,
+          "window_hours": 10,
+          "subsample": 0.05
+        }
+      ],
+      "scope": "No simulator, architecture, placement, or safety-override changes. Report rack violations with SLA, completion, preemption, energy, and reward; this candidate does not promise zero violations.",
+      "numeric_stability_hotfix": {
+        "id": "masked-categorical-entropy-gradient-finite",
+        "applied_on": "2026-09-26",
+        "torch_observed": "2.13.0+cu130",
+        "issue": "During seed 3 replay, Categorical entropy backprop produced non-finite A2 gradients with illegal actions represented by -inf logits.",
+        "change": "Compute entropy from log_softmax and replace non-finite log-prob entries with zero before p*log(p); the masked categorical entropy objective is unchanged.",
+        "validation": "Exact seed-3 episodes 224-227 replay completed one PPO update with all model parameters finite.",
+        "trainer_sha256": "ba7c4dd8f262cc722048a442f1e2b08c8542cca792b3ee722c90b8018e0309b4"
+      }
+    },
+    "trainer_sha256": "ba7c4dd8f262cc722048a442f1e2b08c8542cca792b3ee722c90b8018e0309b4"
+  },
+  "5": {
+    "config": {
+      "env": {
+        "SEED": "5",
+        "NUM_EPISODES": "300",
+        "NUM_HOSTS": "64",
+        "MAX_STEPS": "120",
+        "GANG_MAX_STEPS": "120",
+        "BATCH_EPISODES": "4",
+        "USE_STGNN": "1",
+        "USE_HISTORY_MLP": "0",
+        "RACK_HISTORY_LEN": "6",
+        "USE_CF_SUPERVISION": "1",
+        "SUBSAMPLE": "0.03",
+        "WORKLOAD_START_HOUR": "1000",
+        "WORKLOAD_WINDOW_HOURS": "10",
+        "LR": "0.0003",
+        "PPO_EPOCHS": "4",
+        "GAMMA": "0.99",
+        "GAE_LAMBDA": "0.95",
+        "EARLY_STOP_PATIENCE": "0",
+        "A1_VIOL_WEIGHT": "8",
+        "RELIEF_TEAM_ADV_COEF": "0.05",
+        "A4_TEAM_ADV_COEF": "0.15",
+        "CF_AUX_COEF": "1",
+        "W_SERVE": "1",
+        "W_ENERGY": "0.3",
+        "W_VIOL": "8",
+        "W_WAIT": "1",
+        "W_CKPT": "0.15",
+        "W_SLA_BASE": "0.5",
+        "W_DEADLINE": "2",
+        "SLA_TARGET_ADMISSION": "0.2",
+        "SLA_TARGET_RESTART": "0.2",
+        "SLA_TARGET_COMPLETION": "0.2",
+        "SLA_DUAL_LR": "0.1",
+        "SLA_MAX_WAIT_STEPS": "12",
+        "SLA_MAX_RESTART_WAIT_STEPS": "12",
+        "SLA_COMPLETION_GRACE_STEPS": "12",
+        "SLA_DROP_SEVERITY": "2",
+        "NET_COMM_TAX": "0.3",
+        "RACK_OVERSUB": "1.2",
+        "GANG_LINK_MBPS": "1000",
+        "NETWORK_BACKGROUND_UTIL": "0",
+        "FEAS_MARGIN": "0.98",
+        "INTERVAL_SEC": "300"
+      },
+      "python": "3.12.3",
+      "torch": "2.13.0+cu130",
+      "trainer_defaults": {
+        "ENT_COEF": 0.01,
+        "ENT_FLOOR_PENALTY": 0.1,
+        "ENT_ADAPT_LR": 0.1,
+        "ENT_COEF_MAX": 1.0,
+        "RELIEF_SLA_WEIGHT": 0.1,
+        "REWARD_SCALE": 1.0,
+        "CF_GAP_EPS": 1e-06,
+        "CLIP": 0.2
+      },
+      "reference": "v5 300-episode rack-priority candidate"
+    },
+    "protocol": {
+      "schema": "pa4h-v5-rack-priority-repair-v1",
+      "status": "multi-seed-rack-priority-run",
+      "seed": 5,
+      "episodes": 300,
+      "starting_checkpoint": null,
+      "training_workload": {
+        "start_hour": 1000,
+        "window_hours": 10,
+        "subsample": 0.03
+      },
+      "rack_priority_change": {
+        "previous_team_violation_weight": 2.0,
+        "previous_relief_violation_weight": 3.0,
+        "team_violation_weight": 8.0,
+        "relief_violation_weight": 8.0,
+        "rationale": "The seed-1 audit showed an exact predicted rack-risk event where global relief 0.01133, energy benefit 0.01363, immediate cost 0.09505, and SLA proxy 0.00216 produced negative delta utility at weight 3; the break-even weight is approximately 7.37. Set both weights to 8 for this one rack-priority candidate."
+      },
+      "evaluation_windows": [
+        {
+          "start_hour": 980,
+          "window_hours": 10,
+          "subsample": 0.01
+        },
+        {
+          "start_hour": 990,
+          "window_hours": 10,
+          "subsample": 0.01
+        },
+        {
+          "start_hour": 1010,
+          "window_hours": 10,
+          "subsample": 0.01
+        },
+        {
+          "start_hour": 980,
+          "window_hours": 10,
+          "subsample": 0.05
+        },
+        {
+          "start_hour": 990,
+          "window_hours": 10,
+          "subsample": 0.05
+        }
+      ],
+      "scope": "No simulator, architecture, placement, or safety-override changes. Report rack violations with SLA, completion, preemption, energy, and reward; this candidate does not promise zero violations.",
+      "numeric_stability_hotfix": {
+        "id": "masked-categorical-entropy-gradient-finite",
+        "applied_on": "2026-09-26",
+        "torch_observed": "2.13.0+cu130",
+        "issue": "During seed 3 replay, Categorical entropy backprop produced non-finite A2 gradients with illegal actions represented by -inf logits.",
+        "change": "Compute entropy from log_softmax and replace non-finite log-prob entries with zero before p*log(p); the masked categorical entropy objective is unchanged.",
+        "validation": "Exact seed-3 episodes 224-227 replay completed one PPO update with all model parameters finite.",
+        "trainer_sha256": "ba7c4dd8f262cc722048a442f1e2b08c8542cca792b3ee722c90b8018e0309b4"
+      }
+    },
+    "trainer_sha256": "ba7c4dd8f262cc722048a442f1e2b08c8542cca792b3ee722c90b8018e0309b4"
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "host": "ip-10-192-25-216",
+  "logical_cpus": 4,
+  "torch_threads": 2,
+  "input": "synthetic correctly-shaped observation; random initialization",
+  "scope": "A2/A4 ST-GNN actor forward only; excludes state construction, masks, CF projection, Java bridge, policy quality",
+  "warmup": 20,
+  "repeats_per_agent": 150,
+  "results": [
+    {
+      "hosts": 16,
+      "racks": 4,
+      "agents": {
+        "A2": {
+          "parameters": 81355,
+          "p50_ms": 0.965935,
+          "p95_ms": 1.1119522999999998,
+          "p99_ms": 1.2923105399999975,
+          "max_ms": 1.674987
+        },
+        "A4": {
+          "parameters": 87526,
+          "p50_ms": 1.0322105000000001,
+          "p95_ms": 1.1763318499999997,
+          "p99_ms": 1.4305176699999984,
+          "max_ms": 1.722205
+        }
+      }
+    },
+    {
+      "hosts": 64,
+      "racks": 16,
+      "agents": {
+        "A2": {
+          "parameters": 82147,
+          "p50_ms": 2.3019495,
+          "p95_ms": 2.609404999999999,
+          "p99_ms": 3.1044312799999974,
+          "max_ms": 3.345275
+        },
+        "A4": {
+          "parameters": 89086,
+          "p50_ms": 2.3145534999999997,
+          "p95_ms": 3.1411087999999974,
+          "p99_ms": 3.83542567,
+          "max_ms": 4.071915
+        }
+      }
+    },
+    {
+      "hosts": 128,
+      "racks": 32,
+      "agents": {
+        "A2": {
+          "parameters": 83203,
+          "p50_ms": 4.3918195,
+          "p95_ms": 5.5248760999999975,
+          "p99_ms": 7.20539763,
+          "max_ms": 7.33975
+        },
+        "A4": {
+          "parameters": 91166,
+          "p50_ms": 4.626898499999999,
+          "p95_ms": 7.63395325,
+          "p99_ms": 17.742550039999987,
+          "max_ms": 19.424882
+        }
+      }
+    },
+    {
+      "hosts": 256,
+      "racks": 64,
+      "agents": {
+        "A2": {
+          "parameters": 85315,
+          "p50_ms": 15.133745999999999,
+          "p95_ms": 20.74066295,
+          "p99_ms": 21.079686149999997,
+          "max_ms": 21.25923
+        },
+        "A4": {
+          "parameters": 95326,
+          "p50_ms": 15.0699515,
+          "p95_ms": 21.0382228,
+          "p99_ms": 21.357617689999998,
+          "max_ms": 24.186817
+        }
+      }
+    }
+  ]
+}

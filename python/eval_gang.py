@@ -32,9 +32,9 @@ import csv
 import numpy as np
 import torch
 
-from gang_env import GangEnv, RACK_SIZE, JOB_OBS_DIM, NET_COMM_TAX
+from gang_env import GangEnv, RACK_SIZE, JOB_OBS_DIM, NET_COMM_TAX, SIMULATOR_SEMANTICS
 from marl_gang_train import (Agents, build_global, gang_step, make_deterministic_act,
-                             save_metric_manifest)
+                             relief_credit_metadata)
 from models import select_action
 from resource_metrics import ResourceMeter
 from nrel_injection_bridge import STEPS_PER_HOUR
@@ -120,8 +120,8 @@ class EPOBF:
     def step(self, env, t):
         for job in sorted(env.pending, key=lambda j: (j.arrival_step, -j.num_nodes)):
             best, best_res = None, 1e18
-            for anchor, _hosts, counts in shared_candidate_plans(env, job):
-                peaks = [env.project_rack_peak(r, job, int(counts[r]))
+            for anchor, hosts, counts in shared_candidate_plans(env, job):
+                peaks = [env.project_rack_peak(r, job, int(counts[r]), add_hosts=hosts)
                          if counts[r] else env.project_rack_peak(r)
                          for r in range(env.num_racks)]
                 residual = sum(max(0.0, env.rack_budget - p) for p in peaks)
@@ -284,9 +284,17 @@ def warmup_environment(env, steps=5):
 
 
 def load_agents(env):
+    ckpt_dir = os.environ.get("GANG_CHECKPOINT_DIR", ".")
+    manifest_path = os.path.join(ckpt_dir, "metric_manifest.json")
+    if not os.path.exists(manifest_path):
+        raise ValueError("missing metric_manifest.json with v5 relief_credit descriptor")
+    with open(manifest_path) as f:
+        manifest = json.load(f)
+    if (manifest.get("simulator_semantics") != SIMULATOR_SEMANTICS or
+            manifest.get("relief_credit") != relief_credit_metadata()):
+        raise ValueError("metric manifest simulator semantics or relief_credit descriptor mismatch")
     ag = Agents(env.num_racks, len(build_global(env)))
     missing = []
-    ckpt_dir = os.environ.get("GANG_CHECKPOINT_DIR", ".")
     for k in ag.actors:
         p = os.path.join(ckpt_dir, f"{k}_{TAG}.pt")
         if os.path.exists(p):
@@ -311,12 +319,18 @@ def load_sla_multipliers(env):
 
 def main():
     decoder = resolve_decoder()
-    save_metric_manifest()
     env = build_eval_env()
     load_sla_multipliers(env)
     n_jobs = len(env._all_jobs)
+    cannot_finish_by_horizon = sum(
+        job.arrival_step + job.duration_steps > env.max_steps
+        for job in env._all_jobs)
+    completion_upper_bound = n_jobs - cannot_finish_by_horizon
     print(f"port={PORT} sub={SUB} steps={env.max_steps} jobs={n_jobs} "
           f"racks={env.num_racks} budget={env.rack_budget:.0f}W safe_res_LA={SAFERES_LA} tag={TAG}\n")
+    print(f"Earliest-finish bound: {completion_upper_bound}/{n_jobs} jobs can finish "
+          f"within the horizon even with immediate placement; "
+          f"{cannot_finish_by_horizon} cannot.\n")
     print(f"MARL deterministic decoder={decoder} (alternate is always audited)\n")
     warmup_environment(env, int(os.environ.get("EVAL_WARMUP_STEPS", 5)))
 
@@ -371,6 +385,8 @@ def main():
             policy=name,
             reward=R,
             jobs_total=sla["n"],
+            earliest_finish_impossible_jobs=cannot_finish_by_horizon,
+            feasible_completion_upper_bound=completion_upper_bound,
             admitted_jobs=s["admitted"],
             completed_jobs=s["completed"],
             served_jobs=sla["served"],

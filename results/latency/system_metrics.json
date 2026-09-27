@@ -1,0 +1,22 @@
+{
+  "host": "ip-10-192-25-216",
+  "architecture": "x86_64",
+  "logical_cpus": 4,
+  "python": "3.12.3",
+  "java": "openjdk version \"21.0.12.1\" 2026-08-18",
+  "torch_threads": 2,
+  "omp_threads": "2",
+  "workload_start_hour": 980,
+  "workload_window_hours": 10,
+  "subsample": 0.05,
+  "hosts": 64,
+  "racks": 16,
+  "steps": 120,
+  "decoder": "sequence",
+  "checkpoint": "outputs/v5_rack_priority_300_seed1/snapshots/ep300",
+  "wall_time_s": 42.53008591000025,
+  "cpu_time_s_sampled": 44.13000000000003,
+  "peak_rss_mb_python_plus_java_sampled": 1109.20703125,
+  "sampling_interval_s": 0.1,
+  "resource_note": "sampled Python benchmark and Java bridge processes"
+}

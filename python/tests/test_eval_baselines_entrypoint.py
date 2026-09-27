@@ -11,7 +11,7 @@ from eval_gang import load_sla_multipliers
 
 class BaselineEntrypointTest(unittest.TestCase):
     def test_eval_baselines_delegates_to_canonical_gang_harness(self):
-        source = Path(__file__).with_name("eval_baselines.py").read_text()
+        source = (Path(__file__).resolve().parents[1] / "eval_baselines.py").read_text()
         tree = ast.parse(source)
         imports = [n for n in tree.body if isinstance(n, ast.ImportFrom)]
         self.assertTrue(any(n.module == "eval_gang" and

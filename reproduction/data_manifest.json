@@ -1,0 +1,178 @@
+[
+  {
+    "path": "extracted/01_aggregated_datasets/training/metadata.csv",
+    "sha256": "385f20516edeef936115d3f4d9a874ac7ee2e36a69863be496e9f017df67b5a8"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000000.parquet",
+    "sha256": "c19cfb3b68ba2777d916c416f910af19a4e07688e203fe6cdd09471ba11a1bd4"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000001.parquet",
+    "sha256": "8b631cdadafb61b0ccea90d4c3793b803b6ebcee9b5d287176d411f7818886fe"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000002.parquet",
+    "sha256": "dc447420b846c784f6d7aaf723ffcdac6098d05049a8be731bfe4f267d04c6db"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000003.parquet",
+    "sha256": "99df0d2d2ff9f95cc0645ba719f4e583e580fc4f02915f66d3463ccab454b33a"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000004.parquet",
+    "sha256": "9bb288cc500132d8baec31984ba6cf1d14aae2d622136e1a2ce99d5f4398f769"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000005.parquet",
+    "sha256": "5acc614e2e362cc4145a1adc340b7886f4319a028396de1d3c0865e167c2b5e3"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000006.parquet",
+    "sha256": "e10121f42cb52c3ba001165205ee9209120f8120844d311e27aa69c1f273a559"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000007.parquet",
+    "sha256": "1cdaa134aa7a579867db6bf1047fa466382219e3768ee0340c1bfe5ef48f0af2"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000008.parquet",
+    "sha256": "0e9bff0cfba234e4c4bffb881524903a476c90a52ede61ef80367946f1e01a5c"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000009.parquet",
+    "sha256": "764204294813927173b8daa5222ef2ebc66d44d6549bd797357e960dad695e1b"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000010.parquet",
+    "sha256": "2a02eb672e0772081fc2151d506f7b77da082a35d353781bfd9490ad1b383d88"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000011.parquet",
+    "sha256": "f088da883cc4c896581d05c3bac81cb5029b76953b26c39d7c257af3593f5231"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000012.parquet",
+    "sha256": "cd4a45e6b0bac2acb8e4722d72f1a2e7333b76befafa58cc18f3afad29c50cfd"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000013.parquet",
+    "sha256": "960c5cb5f9085f93e24b90d536e896d6f040865627969dbfd942e83f0a1d6e88"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000014.parquet",
+    "sha256": "bdf01e6754b33561f6d23a9c3ac475391585de0894646a228b1c538a1ee61e28"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000015.parquet",
+    "sha256": "a68adb3c1cb8809bc2855c00982cb4c4ca901646b2bd1ed097d2928e1906d3b5"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000016.parquet",
+    "sha256": "580663be3dfc3c96633f8b9d21f31715e13f57bab6e4c049c91bf217fcd5ad82"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000017.parquet",
+    "sha256": "2e203726604155f94a00283a4928be8bbd2b27387d112e1bd3fd985cc0c3d341"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000018.parquet",
+    "sha256": "8a406af78dc0fc195a09a89028fc5f4d4d94a2b2982327781f016c27ecb2e81e"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000019.parquet",
+    "sha256": "2db80ec7424494cfe88ac4c055f258a5ec3407aadc1fed160ad5c50f6fd43dad"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000020.parquet",
+    "sha256": "6b425eb2ef66aefedfeffc684b9da5d80ced938f6459f00900439d9bceaafd8c"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000021.parquet",
+    "sha256": "10f5716a09d8aa5e722db7c1ef1b2bf2b3bf55c2aade9a23497c141ac6a1638c"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000022.parquet",
+    "sha256": "98dd1328a442833f0e2f92a331defa072b3deb2494e92c32bfd1b61f04c41896"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000023.parquet",
+    "sha256": "296dbc880b457deec406e48c1e34522ea858502b30b05535638ebe4ca9bd9e23"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000024.parquet",
+    "sha256": "47fb1ff2efde13c52c0c73172ee4a7242f82825e13ac355ca01bbc4707144c04"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000025.parquet",
+    "sha256": "d8bd82b1e2f00ebd83c6ae7d2455e690c32eacebc7c7bdacc6dc2a54e0a5e85b"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000026.parquet",
+    "sha256": "9c9a49c63038f841657fddefbc77a63c5a07bcd972e40aa22c8773ba83e8b123"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000027.parquet",
+    "sha256": "164a0433c14b4d2862972bc641cefa0b427a18c4a13495a6690bb4196814f36c"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000028.parquet",
+    "sha256": "09d96e7fc783b8c62632415343380ab2695069674eb52b492ac77b52c0076d50"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000029.parquet",
+    "sha256": "f99941546c9f026881f09f034da1ec746a9417f18d5d0ac98af84bc4655f8473"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000030.parquet",
+    "sha256": "1736bc47a371e299c89ed8a6dab6a5d28b8b63c18a2b74901097bbcd227dfc2d"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000031.parquet",
+    "sha256": "06139f0a00ffe0cdbd9ba50b99813ee43dedba01cae599115fc001fca69c144b"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000032.parquet",
+    "sha256": "906c2d1acc09b9d4a88435c968fce37eaa477b970346fc94c4047ff75614d7b3"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000033.parquet",
+    "sha256": "2335c9e0698d64c5a1c6063477cffd377510805353622dda0d7adb85302c1d42"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000034.parquet",
+    "sha256": "5af091f8538ff6f1f17ff977e6d72296e68250f410aa8eb2d104285163daa98e"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000035.parquet",
+    "sha256": "f00185da892aff524ba9dfcbe6cf46dc490066bf3de24c61c07e605f521747b3"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000036.parquet",
+    "sha256": "9af0100cbac0b3db59461ec1845d48052592766fa391f51746179b43f39ad200"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000037.parquet",
+    "sha256": "810aa71fa701e348726f51693f9fe0ec393f028082b37ba54d64e2bc26b64cfb"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000038.parquet",
+    "sha256": "7f7ca25388e124d0f3a753b0b34b1d4f8955fc30a3bdecc1a4c20dfeaf72ca8b"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000039.parquet",
+    "sha256": "6019a763edc956f1179f2cf33fc5754cd9da784d318c81a413f14c101e112e85"
+  },
+  {
+    "path": "extracted/01_aggregated_datasets/training/results/000040.parquet",
+    "sha256": "8d4df37cc9e8aab8ed19ee6ffc43ca334309dcdfc2e042d7571eeefb0015d9a1"
+  },
+  {
+    "path": "alibaba_v2020/pod_hourly_jobs.csv",
+    "sha256": "97edc8da95c798df99f5c4559be60f5532a9b718174892ac36db7cc231c249c7"
+  },
+  {
+    "path": "helios_earth_pod_hourly_jobs.csv",
+    "sha256": "7bed08070ef3332d33081fd95327d9254cb1199683a17de2bb06b5c1ddbdc531"
+  }
+]

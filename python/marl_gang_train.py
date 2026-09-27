@@ -23,7 +23,7 @@ import torch
 import torch.nn.functional as F
 
 from gang_env import (GangEnv, RACK_OBS_DIM, JOB_OBS_DIM, NETWORK_OBS_DIM,
-                      RACK_HISTORY_LEN, RACK_SIZE,
+                      RACK_HISTORY_LEN, RACK_SIZE, SIMULATOR_SEMANTICS,
                       INTERVAL_SEC,
                       SLA_TARGET_ADMISSION, SLA_TARGET_RESTART, SLA_TARGET_COMPLETION,
                       NET_COMM_TAX, W_CKPT, W_ENERGY, W_SERVE, W_VIOL, W_WAIT,
@@ -32,6 +32,7 @@ from models import Actor, CentralizedCritic, RackSTGNNActor, select_action
 from resource_metrics import ResourceMeter
 from gang_observability import GangObservability
 from nrel_injection_bridge import STEPS_PER_HOUR
+from relief_credit import ReliefCredit, RELIEF_FEATURE_NAMES, RELIEF_FEATURE_DIM
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -58,6 +59,8 @@ MAX_STEPS = int(os.environ.get("MAX_STEPS", 120))
 SUBSAMPLE = float(os.environ.get("SUBSAMPLE", 0.05))
 SEED = int(os.environ.get("SEED", 0))
 USE_STGNN = os.environ.get("USE_STGNN", "0").strip().lower() in ("1", "true", "yes")
+USE_HISTORY_MLP = os.environ.get("USE_HISTORY_MLP", "0").strip().lower() in ("1", "true", "yes")
+USE_CF_SUPERVISION = os.environ.get("USE_CF_SUPERVISION", "1").strip().lower() in ("1", "true", "yes")
 
 # --- deployable A4 credit fixes ---
 A4_ENT_COEF = float(os.environ.get("A4_ENT_COEF", ENT_COEF))
@@ -74,6 +77,18 @@ DEPLOY_MIN_SERVED_RATE = float(os.environ.get("DEPLOY_MIN_SERVED_RATE", 0.60))
 RESUME = os.environ.get("RESUME", "0").strip().lower() in ("1", "true", "yes")
 WORKLOAD_START_HOUR = os.environ.get("WORKLOAD_START_HOUR", "").strip()
 WORKLOAD_WINDOW_HOURS = os.environ.get("WORKLOAD_WINDOW_HOURS", "").strip()
+VALIDATION_START_HOUR = os.environ.get("VALIDATION_START_HOUR", "").strip()
+VALIDATION_WINDOW_HOURS = os.environ.get("VALIDATION_WINDOW_HOURS", "").strip()
+A1_VIOL_WEIGHT = float(os.environ.get("A1_VIOL_WEIGHT", 3.0))
+A1_OBS_DIM = RACK_OBS_DIM + 5 + RELIEF_FEATURE_DIM
+A3_SLOT_DIM = JOB_OBS_DIM + 2 + RELIEF_FEATURE_DIM
+A3_OBS_DIM = RACK_OBS_DIM + RACK_SIZE * A3_SLOT_DIM
+
+
+def relief_credit_metadata():
+    return dict(schema="global-relief-v1", features=list(RELIEF_FEATURE_NAMES),
+                a1_obs_dim=A1_OBS_DIM, a3_slot_dim=A3_SLOT_DIM,
+                a3_obs_dim=A3_OBS_DIM, violation_weight=A1_VIOL_WEIGHT)
 
 
 def build_global(env):
@@ -92,16 +107,21 @@ class Agents:
     def __init__(self, num_racks, global_dim):
         NR = num_racks
         self.use_stgnn = USE_STGNN
+        self.use_history_mlp = USE_HISTORY_MLP
+        if self.use_stgnn and self.use_history_mlp:
+            raise ValueError("USE_STGNN and USE_HISTORY_MLP are mutually exclusive")
         graph_history_dim = NR * RACK_HISTORY_LEN * RACK_OBS_DIM
         self.dims = dict(
             # Each actor observes the counterfactual quantity that defines its own
             # target.  Previously those labels were partly hidden, making the
             # policy impossible to identify at inference even with perfect credit.
-            a4=((graph_history_dim if self.use_stgnn else NR * RACK_OBS_DIM)
+            a4=((graph_history_dim if (self.use_stgnn or self.use_history_mlp)
+                 else NR * RACK_OBS_DIM)
                 + JOB_OBS_DIM + NETWORK_OBS_DIM + NR + 1, NR + 1),
-            a2=((graph_history_dim if self.use_stgnn else NR * RACK_OBS_DIM) + NR, NR),
-            a1=(RACK_OBS_DIM + 5, 2),
-            a3=(RACK_OBS_DIM + RACK_SIZE * (JOB_OBS_DIM + 2), RACK_SIZE),
+            a2=((graph_history_dim if (self.use_stgnn or self.use_history_mlp)
+                 else NR * RACK_OBS_DIM) + NR, NR),
+            a1=(A1_OBS_DIM, 2),
+            a3=(A3_OBS_DIM, RACK_SIZE),
         )
         self.actors = {
             "a1": Actor(*self.dims["a1"]).to(DEVICE),
@@ -132,8 +152,16 @@ class Agents:
         out_dir = os.environ.get("GANG_CHECKPOINT_DIR", ".")
         os.makedirs(out_dir, exist_ok=True)
         for k, a in self.actors.items():
+            assert_finite_model(a, k)
             torch.save(a.state_dict(), os.path.join(out_dir, f"{k}_{tag}.pt"))
+        assert_finite_model(self.critic, "critic")
         torch.save(self.critic.state_dict(), os.path.join(out_dir, f"critic_{tag}.pt"))
+
+
+def assert_finite_model(model, name):
+    if any(not torch.isfinite(p).all().item() for p in model.state_dict().values()
+           if torch.is_tensor(p)):
+        raise FloatingPointError(f"non-finite {name} checkpoint tensor")
 
 
 def _optimizer_to_device(optimizer, device=DEVICE):
@@ -149,12 +177,15 @@ def save_training_state(path, ag, env, episode, best_batch, best_eval,
     state = {
         "schema_version": 2,
         "semantic_version": "gang-ctde-sla-v2-a4-hybrid",
+        "simulator_semantics": SIMULATOR_SEMANTICS,
+        "relief_credit": relief_credit_metadata(),
         "episode": int(episode),
         "actors": {k: v.state_dict() for k, v in ag.actors.items()},
         "critic": ag.critic.state_dict(),
         "optimizers": {k: v.state_dict() for k, v in ag.opt.items()},
         "entropy_coefficients": dict(ag.ent_coef),
         "use_stgnn": bool(ag.use_stgnn),
+        "use_history_mlp": bool(ag.use_history_mlp),
         "best_batch": float(best_batch),
         "best_eval": float(best_eval),
         "best_deploy_key": best_deploy_key,
@@ -175,6 +206,9 @@ def save_training_state(path, ag, env, episode, best_batch, best_eval,
             "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
         },
     }
+    for name, actor in ag.actors.items():
+        assert_finite_model(actor, name)
+    assert_finite_model(ag.critic, "critic")
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     tmp = f"{path}.tmp"
     torch.save(state, tmp)
@@ -186,8 +220,14 @@ def load_training_state(path, ag, env):
     state = torch.load(path, map_location=DEVICE, weights_only=False)
     if state.get("schema_version") != 2:
         raise ValueError("v1 semantic checkpoints are baseline-only; fresh v2 training state required")
+    if state.get("simulator_semantics") != SIMULATOR_SEMANTICS:
+        raise ValueError("checkpoint simulator semantics differ; use old actor weights for diagnostic replay only")
+    if state.get("relief_credit") != relief_credit_metadata():
+        raise ValueError("checkpoint relief_credit descriptor differs; fresh v5 training required")
     if bool(state.get("use_stgnn")) != bool(ag.use_stgnn):
         raise ValueError("checkpoint architecture does not match USE_STGNN")
+    if bool(state.get("use_history_mlp", False)) != bool(ag.use_history_mlp):
+        raise ValueError("checkpoint architecture does not match USE_HISTORY_MLP")
     if set(state["actors"]) != set(ag.actors):
         raise ValueError("checkpoint actor set does not match current trainer")
     for name, actor in ag.actors.items():
@@ -297,6 +337,15 @@ def _zscore(values):
     return (values - values.mean()) / (values.std() + 1e-8)
 
 
+def masked_categorical_entropy(logits, masks=None):
+    """Categorical entropy without multiplying masked ``-inf`` logits by zero."""
+    log_probs = F.log_softmax(logits, dim=-1)
+    probs = log_probs.exp()
+    valid = torch.isfinite(log_probs) if masks is None else masks.bool()
+    safe_log_probs = torch.where(valid, log_probs, torch.zeros_like(log_probs))
+    return -(probs * safe_log_probs).sum(dim=-1)
+
+
 def combine_local_team_advantages(local, team, team_coef):
     """Normalize local and delayed team credit separately before combining them."""
     return _zscore(local) + float(team_coef) * _zscore(team)
@@ -376,13 +425,11 @@ def chosen_projected_peaks(projected, action):
     return np.full(p.shape[1], np.nan, dtype=np.float32)
 
 
-A1_VIOL_WEIGHT = float(os.environ.get("A1_VIOL_WEIGHT", 3.0))
-
 def relief_action_utilities(before_violation, after_violation, preempt_cost,
                             sla_weight=RELIEF_SLA_WEIGHT, num_racks=1,
                             extra_preempt_cost=0.0, energy_benefit=0.0,
                             sla_penalty=None):
-    """A1 WAIT/PREEMPT utility in the same normalized units as team reward.
+    """Legacy rack-local diagnostic; v5 production uses ReliefCredit.
 
     ``extra_preempt_cost`` is the exact immediate service + checkpoint + queue
     cost. ``energy_benefit`` is the normalized energy saving.  The optional SLA
@@ -419,6 +466,27 @@ def _bump_role(env, key):
     env.ep_stats[key] = env.ep_stats.get(key, 0) + 1
 
 
+def build_relief_candidate_credit(env, job, before_by_rack, preempt_cost):
+    """Project one whole-gang removal without changing placement or simulator state."""
+    before = np.asarray(before_by_rack, dtype=np.float64)
+    if before.shape != (env.num_racks,) or not np.isfinite(before).all():
+        raise ValueError("before_by_rack must contain finite risk for every rack")
+    after = before.copy()
+    for rack in sorted({env.rack_of(host) for host in job.placed_hosts}):
+        after[rack] = env.project_rack_violation_fraction(rack, remove_job=job)
+    if not np.isfinite(after).all():
+        raise FloatingPointError("non-finite projected rack risk")
+    immediate = ((W_SERVE + W_CKPT) * job.num_nodes / max(1, env.num_hosts)
+                 + W_WAIT * float(job.priority) / max(1.0, env.num_hosts * 3.0))
+    energy = W_ENERGY * env.project_job_energy_saved_normalized(job)
+    sla = weighted_sla_penalty(preempt_cost, env._sla_priority_total,
+                               env.sla_lambda_comp)
+    credit = ReliefCredit(float(np.sum(before - after) / env.num_racks),
+                          float(energy), float(immediate), float(sla))
+    credit.features()
+    return after, credit
+
+
 def gang_step(env, ag, t, act):
     """The 4-agent decision orchestration for one env step, shared by training
     (rollout) and evaluation (eval_gang) so they can never diverge. `act(name,
@@ -433,7 +501,8 @@ def gang_step(env, ag, t, act):
             break
         rf_now = env.rack_features()
         rf_flat = (env.rack_history_features(rf_now).reshape(-1)
-                   if ag is not None and getattr(ag, "use_stgnn", False)
+                   if ag is not None and (getattr(ag, "use_stgnn", False)
+                                          or getattr(ag, "use_history_mlp", False))
                    else rf_now.reshape(-1))
         jf = env.job_features(job)
         details = env.a4_counterfactual_details(job)
@@ -449,17 +518,41 @@ def gang_step(env, ag, t, act):
         if a < NR and env.place_job(job, a):
             placements += 1
 
-    # A2/A3/A1 are event-driven. Safe states are not decisions and must not enter
-    # the PPO normalization as thousands of forced WAIT examples.
+    # A2/A3/A1 are event-driven. Recompute after each preemption: one job can
+    # affect several racks, and a single scheduler step may need several reliefs.
+    # A rack where A1 waits (or A3 cannot help) is skipped until another job is
+    # preempted; that changes the state and allows reconsideration.
+    blocked_racks = set()
+    counted_risk_step = False
+    while env.running and len(blocked_racks) < NR:
+        outcome = _relieve_one_rack(env, ag, t, act, blocked_racks,
+                                   count_risk_step=not counted_risk_step)
+        if outcome is None:
+            break
+        counted_risk_step = True
+        preempted, flagged = outcome
+        if preempted:
+            blocked_racks.clear()
+        else:
+            blocked_racks.add(flagged)
+
+
+def _relieve_one_rack(env, ag, t, act, blocked_racks, count_risk_step):
+    """Take one A2→A3→A1 decision; return (preempted, rack), or None if safe."""
+    NR = env.num_racks
     rf = env.rack_features()
     a2_utility = np.array([env.project_rack_violation_fraction(r)
                            for r in range(NR)], dtype=np.float32)
     a2_mask = a2_utility > CF_GAP_EPS
+    for rack in blocked_racks:
+        a2_mask[rack] = False
     if not bool(a2_mask.any()):
-        return
-    _bump_role(env, "risk_steps")
+        return None
+    if count_risk_step:
+        _bump_role(env, "risk_steps")
     a2_base = (env.rack_history_features(rf).reshape(-1)
-               if ag is not None and getattr(ag, "use_stgnn", False)
+               if ag is not None and (getattr(ag, "use_stgnn", False)
+                                      or getattr(ag, "use_history_mlp", False))
                else rf.reshape(-1))
     a2_obs = np.concatenate([a2_base, a2_utility])
     a2_choice = bool(a2_mask.sum() > 1)
@@ -469,48 +562,40 @@ def gang_step(env, ag, t, act):
     _bump_role(env, "a2_choices" if a2_choice else "a2_forced")
     if a2 == int(np.argmax(np.where(a2_mask, a2_utility, -np.inf))):
         _bump_role(env, "a2_correct")
+        if a2_choice:
+            _bump_role(env, "a2_choice_correct")
     flagged = a2
 
     # ---- A3 ranks only victims with a positive, causal violation reduction ----
     before_violation = float(a2_utility[flagged])
     cands = env.jobs_on_rack(flagged)[:RACK_SIZE]
     if not cands:
-        return
+        return False, flagged
     costs = np.array([env.preemption_sla_cost(jb) for jb in cands], dtype=np.float32)
-    after = np.array([env.project_rack_violation_fraction(flagged, remove_job=jb)
-                      for jb in cands], dtype=np.float32)
-    relief = np.maximum(0.0, before_violation - after)
+    projected = [build_relief_candidate_credit(env, jb, a2_utility, cost)
+                 for jb, cost in zip(cands, costs)]
+    after = np.array([v[0][flagged] for v in projected], dtype=np.float32)
+    credits = [v[1] for v in projected]
+    relief = before_violation - after
     positive = relief > CF_GAP_EPS
     if not bool(positive.any()):
-        return
+        return False, flagged
 
     a3_mask = np.zeros(RACK_SIZE, dtype=bool)
     a3_mask[:len(cands)] = positive
     a3_utility = np.full(RACK_SIZE, -np.inf, dtype=np.float32)
-    immediate = np.zeros(len(cands), dtype=np.float32)
-    energy = np.zeros(len(cands), dtype=np.float32)
-    sla_penalty = np.zeros(len(cands), dtype=np.float32)
-    for i, jb in enumerate(cands):
-        immediate[i] = (W_SERVE * jb.num_nodes / max(1, env.num_hosts)
-                        + W_CKPT * jb.num_nodes / max(1, env.num_hosts)
-                        + W_WAIT * float(jb.priority) / max(1.0, env.num_hosts * 3.0))
-        if hasattr(env, "project_job_energy_saved_normalized"):
-            energy[i] = W_ENERGY * env.project_job_energy_saved_normalized(jb)
-        sla_total = max(1.0, float(getattr(env, "_sla_priority_total", 1.0)))
-        lam_comp = float(getattr(env, "sla_lambda_comp", 1.0))
-        sla_penalty[i] = weighted_sla_penalty(costs[i], sla_total, lam_comp)
-        a3_utility[i] = relief_action_utilities(
-            before_violation, after[i], costs[i], num_racks=NR,
-            extra_preempt_cost=immediate[i], energy_benefit=energy[i],
-            sla_penalty=sla_penalty[i])[1]
+    for i, credit in enumerate(credits):
+        if positive[i]:
+            a3_utility[i] = credit.delta_utility(A1_VIOL_WEIGHT)
 
-    slot_dim = JOB_OBS_DIM + 2
+    slot_dim = A3_SLOT_DIM
     a3_slots = np.zeros(RACK_SIZE * slot_dim, dtype=np.float32)
     for i, jb in enumerate(cands):
         start = i * slot_dim
         a3_slots[start:start + JOB_OBS_DIM] = env.job_features(jb)
         a3_slots[start + JOB_OBS_DIM] = relief[i]
         a3_slots[start + JOB_OBS_DIM + 1] = costs[i] / (1.0 + costs[i])
+        a3_slots[start + JOB_OBS_DIM + 2:start + slot_dim] = credits[i].features()
     a3_obs = np.concatenate([rf[flagged], a3_slots])
     a3_choice = bool(a3_mask.sum() > 1)
     a3 = int(act("a3", a3_obs, a3_mask, t,
@@ -519,19 +604,20 @@ def gang_step(env, ag, t, act):
     _bump_role(env, "a3_choices" if a3_choice else "a3_forced")
     if a3 == int(np.argmax(np.where(a3_mask, a3_utility, -np.inf))):
         _bump_role(env, "a3_correct")
+        if a3_choice:
+            _bump_role(env, "a3_choice_correct")
 
     # ---- A1 consumes A3's candidate and decides whether net relief is worth it ----
     selected_cost = float(costs[a3])
     selected_after = float(after[a3])
     selected_relief = float(relief[a3])
     norm_preempt_cost = selected_cost / (1.0 + selected_cost)
+    selected_credit = credits[a3]
     a1_obs = np.concatenate([rf[flagged], [len(env.pending) / 50.0,
                                            before_violation, selected_after,
-                                           selected_relief, norm_preempt_cost]])
-    a1_utility = relief_action_utilities(
-        before_violation, selected_after, selected_cost, num_racks=NR,
-        extra_preempt_cost=float(immediate[a3]), energy_benefit=float(energy[a3]),
-        sla_penalty=float(sla_penalty[a3]))
+                                           selected_relief, norm_preempt_cost],
+                             selected_credit.features()])
+    a1_utility = selected_credit.a1_utilities(A1_VIOL_WEIGHT)
     a1_mask = np.ones(2, dtype=bool)
     a1 = int(act("a1", a1_obs, a1_mask, t,
                  credit_context=dict(utility=a1_utility), record=True))
@@ -546,6 +632,7 @@ def gang_step(env, ag, t, act):
         _bump_role(env, "preempt_on_risk")
         env.preempt_job(cands[a3])
         _bump_role(env, "a3_executed")
+    return a1 == 1, flagged
 
 
 def rollout(env, ag):
@@ -652,6 +739,8 @@ def ppo_update_batch(ag, batch):
                           device=DEVICE).unsqueeze(1)
     for _ in range(EPOCHS):
         closs = F.mse_loss(ag.critic(G), RET)
+        if not torch.isfinite(closs).item():
+            raise FloatingPointError("non-finite critic loss")
         ag.opt["critic"].zero_grad(); closs.backward(); ag.opt["critic"].step()
 
     logs = {}
@@ -665,7 +754,7 @@ def ppo_update_batch(ag, batch):
         old_lp = torch.as_tensor(np.concatenate([p["old_lp"] for p in parts]), device=DEVICE)
         team_adv = np.concatenate([p["team_adv"] for p in parts])
         local_parts = [p["local_adv"] for p in parts if p["local_adv"] is not None]
-        if local_parts and sum(len(x) for x in local_parts) == len(team_adv):
+        if USE_CF_SUPERVISION and local_parts and sum(len(x) for x in local_parts) == len(team_adv):
             local_adv = np.concatenate(local_parts)
             team_coef = A4_TEAM_ADV_COEF if name == "a4" else RELIEF_TEAM_ADV_COEF
             adv = combine_local_team_advantages(local_adv, team_adv, team_coef)
@@ -673,6 +762,8 @@ def ppo_update_batch(ag, batch):
             local_adv = None
             adv = _zscore(team_adv)
         a_adv = torch.as_tensor(adv, device=DEVICE)
+        if not torch.isfinite(a_adv).all().item():
+            raise FloatingPointError(f"non-finite {name} advantage")
         masks = (torch.as_tensor(np.concatenate([p["masks"] for p in parts]), device=DEVICE)
                  if parts[0]["masks"] is not None else None)
         actor = ag.actors[name]
@@ -687,7 +778,7 @@ def ppo_update_batch(ag, batch):
             logits = actor(obs, masks)
             dist = torch.distributions.Categorical(logits=logits)
             ratio = torch.exp(dist.log_prob(acts) - old_lp)
-            ent_rows = dist.entropy()
+            ent_rows = masked_categorical_entropy(logits, masks)
             choice_rows = ((masks.sum(dim=1) > 1) if masks is not None
                            else torch.ones_like(ent_rows, dtype=torch.bool))
             ent = (ent_rows[choice_rows].mean() if bool(choice_rows.any())
@@ -697,10 +788,12 @@ def ppo_update_batch(ag, batch):
             loss = -torch.min(ratio * a_adv,
                               torch.clamp(ratio, 1 - CLIP, 1 + CLIP) * a_adv).mean() \
                 - ecoef * ent + ENT_FLOOR_PENALTY * entropy_floor.pow(2)
-            if cf_utility is not None and masks is not None:
+            if USE_CF_SUPERVISION and cf_utility is not None and masks is not None:
                 cf_loss, cf_rows = counterfactual_policy_loss(
                     logits, cf_utility, masks)
                 loss = loss + CF_AUX_COEF * cf_loss
+            if not torch.isfinite(loss).item():
+                raise FloatingPointError(f"non-finite {name} actor loss")
             ag.opt[name].zero_grad(); loss.backward(); ag.opt[name].step()
         local_mean = (float(local_adv.mean()) if local_adv is not None else float("nan"))
         observed_ent = float(ent.detach()) if torch.is_tensor(ent) else float(ent)
@@ -726,7 +819,7 @@ def ppo_update_batch(ag, batch):
         logs[name] = (len(acts), observed_ent, local_mean, ag.ent_coef[name],
                       cf_rows, cf_acc, cf_regret)
     aux_parts = [b["a4_aux"] for b in batch if b.get("a4_aux") is not None]
-    if aux_parts and hasattr(ag.actors["a4"], "auxiliary"):
+    if USE_CF_SUPERVISION and aux_parts and hasattr(ag.actors["a4"], "auxiliary"):
         aux_obs = torch.as_tensor(np.concatenate([p["obs"] for p in aux_parts]), device=DEVICE)
         aux_feasible = torch.as_tensor(np.concatenate([p["feasible"] for p in aux_parts]), device=DEVICE)
         aux_forced = torch.as_tensor(np.concatenate([p["forced"] for p in aux_parts]), device=DEVICE)
@@ -734,6 +827,8 @@ def ppo_update_batch(ag, batch):
             feas_logits, forced_logits = ag.actors["a4"].auxiliary(aux_obs)
             aux_loss = (F.binary_cross_entropy_with_logits(feas_logits, aux_feasible)
                         + F.binary_cross_entropy_with_logits(forced_logits, aux_forced))
+            if not torch.isfinite(aux_loss).item():
+                raise FloatingPointError("non-finite A4 auxiliary loss")
             ag.opt["a4"].zero_grad()
             (A4_FEAS_AUX_COEF * aux_loss).backward()
             ag.opt["a4"].step()
@@ -790,18 +885,32 @@ def save_deployment_decoder(name):
                        pointwise_argmax_retained=True), f, indent=2)
 
 
-def save_metric_manifest():
+def save_metric_manifest(overwrite=True):
     """Freeze metric names/definitions so later runs cannot silently drop fields."""
     out_dir = os.environ.get("GANG_CHECKPOINT_DIR", ".")
     os.makedirs(out_dir, exist_ok=True)
+    manifest_path = os.path.join(out_dir, "metric_manifest.json")
+    if not overwrite and os.path.exists(manifest_path):
+        return
     manifest = dict(
         schema_version="gang_metrics_v1",
         semantic_schema_version="gang_metrics_v2",
+        simulator_semantics=SIMULATOR_SEMANTICS,
+        relief_credit=relief_credit_metadata(),
+        numerics_checked=True,
+        choice_accuracy="genuine legal choices only; NaN when denominator is zero",
         architecture=dict(
-            a2_a4=("rack_stgnn_shared_scorer" if USE_STGNN else "mlp"),
+            a2_a4=("rack_stgnn_shared_scorer" if USE_STGNN else
+                   "history_mlp" if USE_HISTORY_MLP else "mlp"),
             a1_a3="mlp",
-            history_steps=(RACK_HISTORY_LEN if USE_STGNN else 1),
+            history_steps=(RACK_HISTORY_LEN if (USE_STGNN or USE_HISTORY_MLP) else 1),
+            counterfactual_supervision=USE_CF_SUPERVISION,
         ),
+        workload=dict(source=os.environ.get("POD_HOURLY_JOBS"),
+                      train_start_hour=WORKLOAD_START_HOUR,
+                      validation_start_hour=VALIDATION_START_HOUR,
+                      window_hours=WORKLOAD_WINDOW_HOURS,
+                      subsample=SUBSAMPLE, seed=SEED),
         sla=dict(
             sla_viol="unique jobs that are dropped or completed late",
             admission_late="jobs first placed after SLA_MAX_WAIT_STEPS",
@@ -827,7 +936,7 @@ def save_metric_manifest():
         ),
         resource=dict(fields=["wall_time_s", "cpu_time_s", "avg_cpu_pct", "peak_rss_mb"]),
     )
-    with open(os.path.join(out_dir, "metric_manifest.json"), "w") as f:
+    with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
 
 
@@ -877,6 +986,9 @@ def train():
     np.random.seed(SEED)
     torch.manual_seed(SEED)
     port = int(os.environ.get("BRIDGE_PORT", 25333))
+    validation_env = None
+    if VALIDATION_START_HOUR and not WORKLOAD_START_HOUR:
+        raise ValueError("VALIDATION_START_HOUR requires WORKLOAD_START_HOUR")
     if WORKLOAD_START_HOUR:
         start_hour = int(WORKLOAD_START_HOUR)
         window_hours = int(WORKLOAD_WINDOW_HOURS)
@@ -892,6 +1004,25 @@ def train():
         print(f"[workload] source={os.environ.get('POD_HOURLY_JOBS', 'default')} "
               f"hours=[{start_hour},{start_hour + window_hours}) "
               f"steps=[0,{window_hours * STEPS_PER_HOUR})")
+        if VALIDATION_START_HOUR:
+            val_start_hour = int(VALIDATION_START_HOUR)
+            val_window_hours = int(VALIDATION_WINDOW_HOURS or window_hours)
+            if val_window_hours <= 0:
+                raise ValueError("VALIDATION_WINDOW_HOURS must be positive")
+            if max(start_hour, val_start_hour) < min(
+                    start_hour + window_hours, val_start_hour + val_window_hours):
+                raise ValueError("training and validation windows overlap")
+            val_start_step = val_start_hour * STEPS_PER_HOUR
+            validation_env = GangEnv(
+                port=port, subsample=SUBSAMPLE, max_steps=MAX_STEPS,
+                min_arrival_step=val_start_step,
+                arrival_end_step=(val_start_hour + val_window_hours) * STEPS_PER_HOUR)
+            if not validation_env._all_jobs:
+                raise ValueError("validation window contains no matched GPU jobs")
+            for job in validation_env._all_jobs:
+                job.arrival_step -= val_start_step
+            print(f"[validation] hours=[{val_start_hour},{val_start_hour + val_window_hours}) "
+                  f"jobs={len(validation_env._all_jobs)}")
     else:
         env = GangEnv(port=port, subsample=SUBSAMPLE,
                       max_arrival_step=48, max_steps=MAX_STEPS)
@@ -956,7 +1087,7 @@ def train():
                 "avg_cpu_pct", "peak_rss_mb", "a2_ranked", "a3_candidate",
                 "a1_decisions", "a1_preempt", "a3_executed",
                 "relief_opportunities", "risk_steps", "a2_choices", "a2_forced",
-                "a2_correct", "a3_choices", "a3_forced", "a3_correct",
+                "a2_correct", "a2_choice_correct", "a3_choices", "a3_forced", "a3_correct", "a3_choice_correct",
                 "a1_oracle_preempt", "a1_oracle_wait", "a1_correct",
                   "a1_unique", "a2_unique", "a3_unique", "a4_unique", "a1_samples", "a2_samples", "a3_samples", "a4_samples", "a1_preempt_rate", "a2_choice_accuracy", "a3_choice_accuracy", "a4_defer_rate", "a4_placement_rate"])
     print(f"[gang-train] batch={BATCH_EPISODES} ep/update over {NUM_EPISODES} episodes "
@@ -1007,16 +1138,20 @@ def train():
                         stats["a3_executed"], stats["relief_opportunities"],
                         stats.get("risk_steps", 0), stats.get("a2_choices", 0),
                         stats.get("a2_forced", 0), stats.get("a2_correct", 0),
+                        stats.get("a2_choice_correct", 0),
                         stats.get("a3_choices", 0), stats.get("a3_forced", 0),
-                        stats.get("a3_correct", 0), stats.get("a1_oracle_preempt", 0),
+                        stats.get("a3_correct", 0), stats.get("a3_choice_correct", 0),
+                        stats.get("a1_oracle_preempt", 0),
                         stats.get("a1_oracle_wait", 0), stats.get("a1_correct", 0),
                         stats.get("a1_unique_actions", 0), stats.get("a2_unique_actions", 0),
                         stats.get("a3_unique_actions", 0), stats.get("a4_unique_actions", 0),
                         stats.get("a1_samples", 0), stats.get("a2_samples", 0),
                         stats.get("a3_samples", 0), stats.get("a4_samples", 0),
                         stats.get("a1_preempt", 0) / max(1, stats.get("a1_decisions", 1)),
-                        stats.get("a2_correct", 0) / max(1, stats.get("a2_choices", 1)),
-                        stats.get("a3_correct", 0) / max(1, stats.get("a3_choices", 1)),
+                        (stats.get("a2_choice_correct", 0) / stats["a2_choices"]
+                         if stats.get("a2_choices", 0) else float("nan")),
+                        (stats.get("a3_choice_correct", 0) / stats["a3_choices"]
+                         if stats.get("a3_choices", 0) else float("nan")),
                         stats.get("a4_defers", 0) / max(1, stats.get("a4_samples", 1)),
                         (stats.get("a4_samples", 0) - stats.get("a4_defers", 0)) / max(1, stats.get("a4_samples", 1))])
             obs.log_episode(ep, {
@@ -1064,24 +1199,29 @@ def train():
         role_totals = {k: sum(int(s.get(k, 0)) for s in batch_roles) for k in
                        ("a2_ranked", "a3_candidate", "a1_decisions", "a1_preempt",
                         "a3_executed", "relief_opportunities", "preempt_on_risk",
-                        "risk_steps", "a2_choices", "a2_forced", "a2_correct",
-                        "a3_choices", "a3_forced", "a3_correct",
+                        "risk_steps", "a2_choices", "a2_forced", "a2_correct", "a2_choice_correct",
+                        "a3_choices", "a3_forced", "a3_correct", "a3_choice_correct",
                         "a1_oracle_preempt", "a1_oracle_wait", "a1_correct")}
         batch_mean = sum(batch_r) / max(1, len(batch_r))
         best_batch = max(best_batch, batch_mean)
 
         # Compare both deterministic decoders on the same validation episode.
         # Selection is constraint-first; neither decoder is assumed superior.
+        selection_env = validation_env or env
+        for attr in ("sla_lambda_adm", "sla_lambda_restart", "sla_lambda_comp"):
+            setattr(selection_env, attr, getattr(env, attr))
         eval_r, eval_stats, eval_sla = evaluate_deterministic(
-            env, ag, a4_mode="sequence")
+            selection_env, ag, a4_mode="sequence")
         point_r, point_stats, point_sla = evaluate_deterministic(
-            env, ag, a4_mode="pointwise")
+            selection_env, ag, a4_mode="pointwise")
         seq_net = network_console_summary(eval_stats)
         point_net = network_console_summary(point_stats)
         n_eval = max(1, eval_sla["n"])
         adm_rate = eval_sla["admission_late"] / n_eval
         comp_rate = (eval_sla["completion_late"] + eval_sla["dropped"]) / n_eval
+        restart_rate = eval_sla["restart_late"] / n_eval
         feasible = (adm_rate <= SLA_TARGET_ADMISSION
+                    and restart_rate <= SLA_TARGET_RESTART
                     and comp_rate <= SLA_TARGET_COMPLETION)
         eval_decisions = int(eval_stats.get("a1_decisions", 0))
         selective_coverage = (eval_stats.get("a1_oracle_preempt", 0) > 0

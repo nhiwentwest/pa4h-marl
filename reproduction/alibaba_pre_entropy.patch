@@ -1,0 +1,27 @@
+--- a/python/marl_gang_train.py
++++ b/python/marl_gang_train.py
+@@ -337,15 +337,6 @@
+     return (values - values.mean()) / (values.std() + 1e-8)
+ 
+ 
+-def masked_categorical_entropy(logits, masks=None):
+-    """Categorical entropy without multiplying masked ``-inf`` logits by zero."""
+-    log_probs = F.log_softmax(logits, dim=-1)
+-    probs = log_probs.exp()
+-    valid = torch.isfinite(log_probs) if masks is None else masks.bool()
+-    safe_log_probs = torch.where(valid, log_probs, torch.zeros_like(log_probs))
+-    return -(probs * safe_log_probs).sum(dim=-1)
+-
+-
+ def combine_local_team_advantages(local, team, team_coef):
+     """Normalize local and delayed team credit separately before combining them."""
+     return _zscore(local) + float(team_coef) * _zscore(team)
+@@ -778,7 +769,7 @@
+             logits = actor(obs, masks)
+             dist = torch.distributions.Categorical(logits=logits)
+             ratio = torch.exp(dist.log_prob(acts) - old_lp)
+-            ent_rows = masked_categorical_entropy(logits, masks)
++            ent_rows = dist.entropy()
+             choice_rows = ((masks.sum(dim=1) > 1) if masks is not None
+                            else torch.ones_like(ent_rows, dtype=torch.bool))
+             ent = (ent_rows[choice_rows].mean() if bool(choice_rows.any())

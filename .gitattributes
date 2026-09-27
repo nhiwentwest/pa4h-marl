@@ -1,0 +1,3 @@
+# Unified patches contain mandatory space-prefixed empty context lines.
+*.patch whitespace=-blank-at-eol
+*.csv text eol=lf

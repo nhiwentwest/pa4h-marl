@@ -63,7 +63,7 @@ class Job:
                  # baseline telemetry tracking
                  "estimated_power_w", "start_step", "assigned_rack", "assigned_host_ids",
                  "last_preempted_rack", "not_before_step", "preemption_count", "status",
-                 "planned_start_step", "planned_rack", "remaining_duration_steps")
+                 "planned_start_step", "planned_rack", "remaining_duration_steps", "progress_steps")
 
     def __init__(self, job_id, arrival_step, num_nodes, duration_steps,
                  per_node_trace_w, dt_sec, priority, model_type, job_type,
@@ -94,6 +94,7 @@ class Job:
         self.planned_start_step = None
         self.planned_rack = None
         self.remaining_duration_steps = self.duration_steps
+        self.progress_steps = 0
 
     @property
     def peak_per_node_w(self):
@@ -150,8 +151,10 @@ def build_job_queue(jobs_csv=JOBS_CSV, nrel_root=NREL_ROOT,
     reg = M.build_nrel_registry(nrel_root)
     dur_map = _load_duration_map()
     if verbose:
+        row_durations = (int(df["duration_hours"].notna().sum())
+                         if "duration_hours" in df else 0)
         print(f"[inject] {len(df)} workloads, {len(reg)} NREL profiles, "
-              f"{len(dur_map)} durations")
+              f"{row_durations} row durations, {len(dur_map)} external durations")
 
     trace_cache = {}   # profile_path -> (t, per_node_W) to avoid re-reading parquet
     jobs = []
@@ -197,7 +200,10 @@ def build_job_queue(jobs_csv=JOBS_CSV, nrel_root=NREL_ROOT,
             trace_cache[ppath] = np.ascontiguousarray(pn, dtype=np.float64)
         per_node = trace_cache[ppath]
 
-        dur_h = dur_map.get(wid, None)
+        # Helios conversion carries measured runtime in the row. Alibaba uses
+        # the execution-summary join; never let an unrelated cached ID win.
+        row_duration = row.get("duration_hours", None)
+        dur_h = float(row_duration) if pd.notna(row_duration) else dur_map.get(wid)
         if dur_h is None or not np.isfinite(dur_h) or dur_h <= 0:
             # fallback: one NREL period length (min meaningful run), never 0
             dur_h = max(len(per_node) * DT_SEC / 3600.0, INTERVAL_SEC / 3600.0)

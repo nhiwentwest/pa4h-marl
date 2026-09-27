@@ -1,32 +1,18 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Make sure we don't conflict with existing py4j bridge
-pkill -f Py4jBridge 2>/dev/null || true
-sleep 1
+export SEED="${SEED:-1}"
+export NUM_EPISODES="${NUM_EPISODES:-300}"
+export SUBSAMPLE="${SUBSAMPLE:-0.05}"
+export MAX_STEPS="${MAX_STEPS:-120}"
+export WORKLOAD_START_HOUR="${WORKLOAD_START_HOUR:-1000}"
+export WORKLOAD_WINDOW_HOURS="${WORKLOAD_WINDOW_HOURS:-10}"
+export POD_HOURLY_JOBS="${POD_HOURLY_JOBS:-data/helios_earth_pod_hourly_jobs.csv}"
+export USE_STGNN="${USE_STGNN:-1}"
+export START_TENSORBOARD="${START_TENSORBOARD:-1}"
+export OBS_ENABLED="${OBS_ENABLED:-1}"
+export GANG_CHECKPOINT_DIR="${GANG_CHECKPOINT_DIR:-outputs/helios_seed${SEED}}"
+export GANG_CSV="${GANG_CSV:-${GANG_CHECKPOINT_DIR}/train.csv}"
 
-# Start the java bridge on port 25444
-export BRIDGE_PORT=25444
-nohup java -cp 'target/classes:target/dependency/*' com.dacn.advanced.Py4jBridge $BRIDGE_PORT > helios_bridge.log 2>&1 < /dev/null &
-echo "Waiting 3s for Java Py4jBridge..."
-sleep 3
-
-export SEED=1
-export NUM_EPISODES=300
-export SUBSAMPLE=0.01
-export MAX_STEPS=1200
-export HELIOS_WINDOW_HOURS=200
-export POD_HOURLY_JOBS="data/helios_earth_pod_hourly_jobs.csv"
-
-# Make sure the output directory is distinct
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-export GANG_CHECKPOINT_DIR="outputs/gang_helios_300eps_${TIMESTAMP}"
-export GANG_CSV="${GANG_CHECKPOINT_DIR}/train.csv"
-
-mkdir -p $GANG_CHECKPOINT_DIR
-
-echo "Starting Helios training for $NUM_EPISODES eps with seed $SEED..."
-echo "Checkpoints and CSV will be saved to $GANG_CHECKPOINT_DIR"
-
-nohup python3 python/marl_gang_train_helios.py > "${GANG_CHECKPOINT_DIR}/train.log" 2>&1 < /dev/null &
-echo "Training started in background. Monitor with: tail -f ${GANG_CHECKPOINT_DIR}/train.log"
+bash scripts/run_gang.sh

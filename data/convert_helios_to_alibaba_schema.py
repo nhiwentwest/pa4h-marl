@@ -1,7 +1,8 @@
 """
 Convert HeliosData cluster_log.csv → pod_hourly_jobs.csv (Alibaba schema).
 
-Alibaba schema: workload_id, arrival_hour, total_gpu_request, num_pods, job_type, model_type
+Output schema: workload_id, arrival_hour, total_gpu_request, num_pods,
+               job_type, model_type, duration_hours
 
 Helios schema:  job_id, user, vc, gpu_num, cpu_num, node_num, state, submit_time,
                 start_time, end_time, duration, queue
@@ -12,11 +13,12 @@ Mapping:
   total_gpu_request = gpu_num
   num_pods          = node_num   (closest analogue)
   job_type          = "training" (all Helios DL jobs → training)
-  model_type        = vc         (virtual-cluster used as proxy model category)
+  model_type        = "unknown"  (VC is not a model family)
+  duration_hours    = duration / 3600 (measured runtime in seconds)
 """
 import pandas as pd
-import sys
 import os
+import argparse
 
 def convert(input_csv, output_csv, max_jobs=None):
     df = pd.read_csv(input_csv)
@@ -24,9 +26,10 @@ def convert(input_csv, output_csv, max_jobs=None):
     print(f"[helios] columns: {list(df.columns)}")
     print(f"[helios] state distribution:\n{df['state'].value_counts().to_string()}")
 
-    # Filter: only GPU jobs that actually ran (COMPLETED or FAILED with gpu_num > 0)
-    df = df[df["gpu_num"] > 0].copy()
-    print(f"[helios] after gpu_num > 0 filter: {len(df)} rows")
+    # A job needs a recorded execution interval to contribute a real duration.
+    df["duration"] = pd.to_numeric(df["duration"], errors="coerce")
+    df = df[(df["gpu_num"] > 0) & (df["duration"] > 0)].copy()
+    print(f"[helios] after GPU/duration filter: {len(df)} rows")
 
     # Filter: only jobs that have a valid submit_time
     df = df.dropna(subset=["submit_time"])
@@ -46,6 +49,7 @@ def convert(input_csv, output_csv, max_jobs=None):
         "job_type": "training",   # all Helios DL jobs
         "model_type": "unknown",  # VC names don't map to known Alibaba types (cv/genai);
                                   # matcher falls through to mixture case regardless
+        "duration_hours": df["duration"].astype(float) / 3600.0,
     })
 
     # Sort by arrival
@@ -63,11 +67,17 @@ def convert(input_csv, output_csv, max_jobs=None):
     return out
 
 if __name__ == "__main__":
-    cluster = sys.argv[1] if len(sys.argv) > 1 else "Earth"
-    max_jobs = int(sys.argv[2]) if len(sys.argv) > 2 else None
+    parser = argparse.ArgumentParser(description="Convert Helios GPU jobs with measured durations")
+    parser.add_argument("cluster", nargs="?", default="Earth")
+    parser.add_argument("--input", dest="input_csv")
+    parser.add_argument("--output", dest="output_csv")
+    parser.add_argument("--max-jobs", type=int)
+    args = parser.parse_args()
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    input_csv = os.path.join(script_dir, "HeliosData", "data", cluster, "cluster_log.csv")
-    output_csv = os.path.join(script_dir, f"helios_{cluster.lower()}_pod_hourly_jobs.csv")
+    input_csv = args.input_csv or os.path.join(
+        script_dir, "helios", args.cluster, "cluster_log.csv")
+    output_csv = args.output_csv or os.path.join(
+        script_dir, f"helios_{args.cluster.lower()}_pod_hourly_jobs.csv")
     
-    convert(input_csv, output_csv, max_jobs)
+    convert(input_csv, output_csv, args.max_jobs)

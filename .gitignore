@@ -8,3 +8,15 @@ outputs/
 data/*.csv
 data/*.parquet
 .DS_Store
+
+# Reproduction products and local dependencies
+vendor/
+.venv/
+experiment_runs/
+*.zip
+*.tar
+*.tar.gz
+*.pdf
+*.parquet
+data/**/*.csv
+*.sha256.tmp

@@ -21,6 +21,8 @@ Everything is data-derived: arrivals/durations/power from Alibaba+NREL, budgets
 from NREL nameplate. No synthetic spikes, no forecasting model.
 """
 import os
+import base64
+from functools import lru_cache
 import numpy as np
 from py4j.java_gateway import JavaGateway, GatewayParameters
 
@@ -32,6 +34,7 @@ RACK_OBS_DIM = 7
 JOB_OBS_DIM = 8
 NETWORK_OBS_DIM = 4
 RACK_HISTORY_LEN = int(os.environ.get("RACK_HISTORY_LEN", 6))
+SIMULATOR_SEMANTICS = "gang-replay-v5-global-relief-credit"
 A4_DEFER_OPPORTUNITY_COST = float(os.environ.get("A4_DEFER_OPPORTUNITY_COST", 0.12))
 
 NREL_PEAK_W = 3062.0
@@ -46,6 +49,7 @@ FEAS_MARGIN = float(os.environ.get("FEAS_MARGIN", 0.98))
 # from arrival) exceeds this many RL steps is an SLA (deadline) violation. 12 steps
 # = 1h at 300s/step. Priority-weighted so online-serving misses count more.
 SLA_MAX_WAIT_STEPS = int(os.environ.get("SLA_MAX_WAIT_STEPS", 12))
+SLA_MAX_RESTART_WAIT_STEPS = int(os.environ.get("SLA_MAX_RESTART_WAIT_STEPS", 12))
 SLA_COMPLETION_GRACE_STEPS = int(os.environ.get("SLA_COMPLETION_GRACE_STEPS", 12))
 SLA_DROP_SEVERITY = float(os.environ.get("SLA_DROP_SEVERITY", 2.0))
 
@@ -68,6 +72,7 @@ W_NETWORK_PLACEMENT = float(os.environ.get("W_NETWORK_PLACEMENT", 0.10))
 # after a stable policy exists.  Aggressive infeasible targets make dual ascent
 # diverge and can turn the relief hierarchy off.
 SLA_TARGET_ADMISSION = float(os.environ.get("SLA_TARGET_ADMISSION", 0.20))
+SLA_TARGET_RESTART = float(os.environ.get("SLA_TARGET_RESTART", 0.20))
 SLA_TARGET_COMPLETION = float(os.environ.get("SLA_TARGET_COMPLETION", 0.20))
 SLA_DUAL_LR = float(os.environ.get("SLA_DUAL_LR", 0.10))
 SLA_DUAL_WARMUP_UPDATES = int(os.environ.get("SLA_DUAL_WARMUP_UPDATES", 2))
@@ -93,7 +98,7 @@ def network_reward_penalty(delay_sec, max_link_util):
 
 class GangEnv:
     def __init__(self, port=None, jobs=None, subsample=None, max_arrival_step=None,
-                 max_steps=None, seed=0):
+                 min_arrival_step=None, arrival_end_step=None, max_steps=None, seed=0):
         port = int(port if port is not None else os.environ.get("BRIDGE_PORT", 25333))
         self.gw = JavaGateway(gateway_parameters=GatewayParameters(
             port=port, auto_convert=True))
@@ -113,27 +118,28 @@ class GangEnv:
         self._rackpy_cache = None   # (power,peak,viol,traj) cached per step (Py4J)
 
         self._all_jobs = jobs if jobs is not None else build_job_queue(
-            subsample=subsample, max_arrival_step=max_arrival_step, verbose=True)
+            subsample=subsample, max_arrival_step=max_arrival_step,
+            min_arrival_step=min_arrival_step, arrival_end_step=arrival_end_step,
+            verbose=True)
         self.max_steps = int(max_steps if max_steps is not None else
                              (max(j.arrival_step for j in self._all_jobs) + 60))
 
         self._trace_cache = {}      # profile_path -> java double[]
         self.sla_lambda_adm = float(os.environ.get("SLA_LAMBDA_ADMISSION", 1.0))
+        self.sla_lambda_restart = float(os.environ.get("SLA_LAMBDA_RESTART", 1.0))
         self.sla_lambda_comp = float(os.environ.get("SLA_LAMBDA_COMPLETION", 1.0))
-        self._sla_rate_ema = np.zeros(2, dtype=np.float64)
+        self._sla_rate_ema = np.zeros(3, dtype=np.float64)
         self._sla_dual_updates = 0
         self._sla_ema_initialized = False
         self.reset()
 
     # ---------------- lifecycle ----------------
-    def _jarr_double_for(self, job):
+    def _packed_trace_for(self, job):
         key = job.profile_path
         a = self._trace_cache.get(key)
         if a is None:
-            arr = job.per_node_trace_w
-            a = self.gw.new_array(self._DblArr, len(arr))
-            for i, v in enumerate(arr):
-                a[i] = float(v)
+            arr = np.ascontiguousarray(job.per_node_trace_w, dtype="<f8")
+            a = base64.b64encode(arr.tobytes()).decode("ascii")
             self._trace_cache[key] = a
         return a
 
@@ -149,6 +155,10 @@ class GangEnv:
         # arrivals bucketed by step
         self._arrivals = {}
         for j in self._all_jobs:
+            j.progress_steps = 0
+            j.remaining_duration_steps = j.duration_steps
+            j.placed_hosts = None
+            j.arrival_step_placed = -1
             self._arrivals.setdefault(j.arrival_step, []).append(j)
         self.pending = []           # list[Job] backlog (priority-sorted each step)
         self.running = {}           # job_id -> Job
@@ -167,10 +177,14 @@ class GangEnv:
         self._completed_ids = set()   # unique jobs that finished (goodput)
         self._first_wait = {}         # job_id -> wait (steps) at its FIRST placement
         self._admission_breached = set()
+        self._restart_breached = set()
+        self._restart_wait_total = {}
+        self._restart_wait_since = {}
         self._completion_late_ids = set()
         self._terminal_sla_applied = False
         self._deadline_crossed_ids = set()   # jobs that newly crossed SLA deadline
         self._sla_adm_cost_step = 0.0
+        self._sla_restart_cost_step = 0.0
         self._sla_comp_cost_step = 0.0
         self._sla_priority_total = max(1.0, sum(float(j.priority) for j in self._all_jobs))
         self.done = False
@@ -179,14 +193,18 @@ class GangEnv:
                              # SLA: placement latency + priority-weighted deadline misses
                              place_wait_sum=0.0, place_n=0, sla_late=0, sla_late_w=0.0,
                              admission_breach=0, admission_breach_w=0.0,
+                             restart_breach=0, restart_breach_w=0.0,
                              completion_late=0, completion_late_w=0.0,
-                             drop_w=0.0, sla_adm_cost=0.0, sla_comp_cost=0.0,
+                             drop_w=0.0, sla_adm_cost=0.0,
+                             sla_restart_cost=0.0, sla_comp_cost=0.0,
                              a2_ranked=0, a3_candidate=0, a1_decisions=0,
                              a1_preempt=0, a3_executed=0,
                              relief_opportunities=0, preempt_on_risk=0,
                              risk_steps=0, a2_choices=0, a2_forced=0,
-                             a2_correct=0, a3_choices=0, a3_forced=0,
-                             a3_correct=0, a1_oracle_preempt=0,
+                             a2_correct=0, a2_choice_correct=0,
+                             a3_choices=0, a3_forced=0,
+                             a3_correct=0, a3_choice_correct=0,
+                             a1_oracle_preempt=0,
                              a1_oracle_wait=0, a1_correct=0,
                              network_cross_bytes=0.0, network_local_bytes=0.0,
                              network_total_bytes=0.0, network_delay_sec=0.0,
@@ -206,6 +224,7 @@ class GangEnv:
             for jid in list(self.running):
                 hosts = self.running[jid].placed_hosts
                 if hosts and all(free[h] for h in hosts):
+                    self.running[jid].remaining_duration_steps = 0
                     self.running.pop(jid, None)
                     self._completed_ids.add(jid)
                     self.ep_stats["completed"] += 1
@@ -218,6 +237,8 @@ class GangEnv:
                             self._sla_comp_cost_step += float(job.priority)
                             self.ep_stats["completion_late"] += 1
                             self.ep_stats["completion_late_w"] += float(job.priority)
+        for job in self.running.values():
+            job.remaining_duration_steps = int(self.bridge.getJobProgress(job.job_id)[1])
         # ingest this step's arrivals
         for j in self._arrivals.get(self.step_idx, []):
             j.placed_hosts = None
@@ -258,7 +279,8 @@ class GangEnv:
     def _fine_window(self, job, elapsed_steps):
         """This job's per-node fine-power (W) over the NEXT RL step, phase-aligned to
         how long it has already run (traces loop with their own period). Memoized."""
-        key = (id(job), int(elapsed_steps))
+        elapsed_steps = job.progress_steps + int(elapsed_steps)
+        key = (id(job), elapsed_steps)
         w = self._win_cache.get(key)
         if w is not None:
             return w
@@ -284,21 +306,23 @@ class GangEnv:
             for j in self.jobs_on_rack(r):
                 n_on_r = sum(1 for h in j.placed_hosts if self.rack_of(h) == r)
                 if n_on_r:
-                    mult = 1.0 + NET_COMM_TAX * (1.0 - n_on_r / max(1, len(j.placed_hosts)))
+                    mult = 1.0 + NET_COMM_TAX * ring_cross_rack_fraction(j.placed_hosts)
                     active = self._fine_window(j, self.step_idx - j.arrival_step_placed) * mult
                     total = total + n_on_r * (active - NREL_IDLE_W)
             self._base_cache[r] = total
             c = total
         return c
 
-    def project_rack_peak(self, r, add_job=None, add_n=0):
+    def project_rack_peak(self, r, add_job=None, add_n=0, add_hosts=None):
         """Projected rack peak power (W) over the next step, phase-aware from the REAL
         NREL traces, if add_n nodes of add_job were placed on rack r now. Anti-phase
         jobs don't stack peaks (a 4th safe node is allowed); in-phase jobs do (refused).
         This is the temporal foresight the ≤3-node rule is blind to."""
         total = self._rack_base_fine(r)
         if add_job is not None and add_n > 0:
-            mult = 1.0 + NET_COMM_TAX * (1.0 - add_n / max(1, add_job.num_nodes))
+            if add_hosts is None:
+                raise ValueError("Power projection requires the candidate host plan")
+            mult = 1.0 + NET_COMM_TAX * ring_cross_rack_fraction(add_hosts)
             total = total + add_n * (self._fine_window(add_job, 0) * mult - NREL_IDLE_W)
         return float(total.max()) if total.size else 0.0
 
@@ -314,8 +338,7 @@ class GangEnv:
             n_on_r = sum(1 for h in remove_job.placed_hosts if self.rack_of(h) == r)
             if n_on_r:
                 elapsed = max(0, self.step_idx - remove_job.arrival_step_placed)
-                mult = 1.0 + NET_COMM_TAX * (
-                    1.0 - n_on_r / max(1, len(remove_job.placed_hosts)))
+                mult = 1.0 + NET_COMM_TAX * ring_cross_rack_fraction(remove_job.placed_hosts)
                 active_delta = self._fine_window(remove_job, elapsed) * mult - NREL_IDLE_W
                 total = np.maximum(0.0, total - n_on_r * active_delta)
         return float(np.mean(total > self.rack_budget)) if total.size else 0.0
@@ -329,8 +352,7 @@ class GangEnv:
         elapsed = max(0, self.step_idx - job.arrival_step_placed)
         for r in {self.rack_of(h) for h in job.placed_hosts}:
             n_on_r = sum(1 for h in job.placed_hosts if self.rack_of(h) == r)
-            mult = 1.0 + NET_COMM_TAX * (
-                1.0 - n_on_r / max(1, len(job.placed_hosts)))
+            mult = 1.0 + NET_COMM_TAX * ring_cross_rack_fraction(job.placed_hosts)
             delta = self._fine_window(job, elapsed) * mult - NREL_IDLE_W
             removed_mean_w += n_on_r * float(np.mean(np.maximum(0.0, delta)))
         return removed_mean_w / max(1e-6, self.num_hosts * NREL_PEAK_W)
@@ -417,7 +439,7 @@ class GangEnv:
             for h in hosts:
                 added[self.rack_of(h)] += 1
             peaks = np.array([
-                self.project_rack_peak(r, job, int(added[r])) if added[r]
+                self.project_rack_peak(r, job, int(added[r]), add_hosts=hosts) if added[r]
                 else self.project_rack_peak(r)
                 for r in range(self.num_racks)
             ], dtype=np.float32)
@@ -435,6 +457,20 @@ class GangEnv:
                                    if feasible.size else 0.0)
         utility[self.num_racks] -= self.admission_defer_penalty(job)
         return utility, mask, projected
+
+    def a4_counterfactual_details(self, job):
+        """Full-information A4 labels consumed by the trainer and eval loop."""
+        utility, mask, projected = self.a4_counterfactuals(job)
+        legal_racks = mask[:self.num_racks]
+        horizon_risk = np.ones(self.num_racks, dtype=np.float32)
+        if legal_racks.any():
+            horizon_risk[legal_racks] = np.mean(
+                projected[legal_racks] > self.rack_budget, axis=1).astype(np.float32)
+        forced_defer = not bool(legal_racks.any())
+        if forced_defer:
+            self.ep_stats["forced_defer_states"] = self.ep_stats.get("forced_defer_states", 0) + 1
+        return {"utility": utility, "mask": mask, "projected": projected,
+                "forced_defer": forced_defer, "horizon_risk": horizon_risk}
 
     def job_features(self, job):
         wait = max(0, self.step_idx - job.arrival_step)
@@ -473,7 +509,7 @@ class GangEnv:
     def preemption_sla_cost(self, job):
         """Priority-weighted risk that checkpoint-restart causes completion SLA harm."""
         deadline = job.arrival_step + job.duration_steps + SLA_COMPLETION_GRACE_STEPS
-        projected_after_restart = self.step_idx + job.duration_steps + 1
+        projected_after_restart = self.step_idx + self.running_remaining(job) + 1
         slack = deadline - projected_after_restart
         scale = max(1.0, job.duration_steps + SLA_COMPLETION_GRACE_STEPS)
         risk = (1.0 - np.clip(slack / scale, 0.0, 1.0)) ** 2
@@ -482,6 +518,9 @@ class GangEnv:
     def _record_admission_breach(self, job):
         if job.job_id in self._admission_breached:
             return False
+        first_wait = self._first_wait.get(job.job_id)
+        if first_wait is not None and first_wait <= SLA_MAX_WAIT_STEPS:
+            return False
         if self.step_idx - job.arrival_step <= SLA_MAX_WAIT_STEPS:
             return False
         self._admission_breached.add(job.job_id)
@@ -489,6 +528,21 @@ class GangEnv:
         self._sla_adm_cost_step += cost
         self.ep_stats["admission_breach"] += 1
         self.ep_stats["admission_breach_w"] += cost
+        return True
+
+    def _record_restart_breach(self, job):
+        jid = job.job_id
+        since = self._restart_wait_since.get(jid)
+        if since is None or jid in self._restart_breached:
+            return False
+        cumulative = self._restart_wait_total.get(jid, 0) + self.step_idx - since
+        if cumulative <= SLA_MAX_RESTART_WAIT_STEPS:
+            return False
+        self._restart_breached.add(jid)
+        cost = float(job.priority)
+        self._sla_restart_cost_step += cost
+        self.ep_stats["restart_breach"] += 1
+        self.ep_stats["restart_breach_w"] += cost
         return True
 
     def sla_global_features(self):
@@ -505,8 +559,8 @@ class GangEnv:
             len(self._completion_late_ids) / max(1, len(self._all_jobs)),
         ], dtype=np.float32)
 
-    def update_sla_multipliers(self, admission_rate, completion_rate):
-        rates = np.clip([admission_rate, completion_rate], 0.0, 1.0)
+    def update_sla_multipliers(self, admission_rate, restart_rate, completion_rate):
+        rates = np.clip([admission_rate, restart_rate, completion_rate], 0.0, 1.0)
         self._sla_dual_updates = getattr(self, "_sla_dual_updates", 0) + 1
         # Initialize EMA with first real rate instead of from zero
         if not hasattr(self, "_sla_ema_initialized") or not self._sla_ema_initialized:
@@ -516,25 +570,19 @@ class GangEnv:
             self._sla_rate_ema = 0.7 * self._sla_rate_ema + 0.3 * rates
         if self._sla_dual_updates <= SLA_DUAL_WARMUP_UPDATES:
             return
-        adm_before = self.sla_lambda_adm
-        comp_before = self.sla_lambda_comp
-        delta_adm = SLA_DUAL_LR * (self._sla_rate_ema[0] - SLA_TARGET_ADMISSION)
-        delta_comp = SLA_DUAL_LR * (self._sla_rate_ema[1] - SLA_TARGET_COMPLETION)
-        self.sla_lambda_adm = float(np.clip(
-            self.sla_lambda_adm + delta_adm, 0.0, SLA_LAMBDA_MAX))
-        self.sla_lambda_comp = float(np.clip(
-            self.sla_lambda_comp + delta_comp, 0.0, SLA_LAMBDA_MAX))
-        print(f"     sla_dual_eq: adm raw={rates[0]:.3f} ema={self._sla_rate_ema[0]:.3f} "
-              f"target={SLA_TARGET_ADMISSION:.2f} lambda {adm_before:.3f}+{delta_adm:+.4f}"
-              f"={self.sla_lambda_adm:.3f} | "
-              f"comp raw={rates[1]:.3f} ema={self._sla_rate_ema[1]:.3f} "
-              f"target={SLA_TARGET_COMPLETION:.2f} lambda {comp_before:.3f}+{delta_comp:+.4f}"
-              f"={self.sla_lambda_comp:.3f}")
+        for i, (name, target, attr) in enumerate((
+            ("adm", SLA_TARGET_ADMISSION, "sla_lambda_adm"),
+            ("restart", SLA_TARGET_RESTART, "sla_lambda_restart"),
+            ("comp", SLA_TARGET_COMPLETION, "sla_lambda_comp"),
+        )):
+            before = getattr(self, attr)
+            delta = SLA_DUAL_LR * (self._sla_rate_ema[i] - target)
+            setattr(self, attr, float(np.clip(before + delta, 0.0, SLA_LAMBDA_MAX)))
+            print(f"     sla_dual_{name}: raw={rates[i]:.3f} ema={self._sla_rate_ema[i]:.3f} "
+                  f"target={target:.2f} lambda {before:.3f}+{delta:+.4f}={getattr(self, attr):.3f}")
 
     def running_remaining(self, job):
-        if job.placed_hosts is None or job.arrival_step_placed < 0:
-            return job.duration_steps
-        return max(0, job.arrival_step_placed + job.duration_steps - self.step_idx)
+        return max(0, job.remaining_duration_steps)
 
     def observe(self):
         self.pending.sort(key=lambda j: (-j.priority, j.arrival_step, j.job_id))
@@ -555,25 +603,52 @@ class GangEnv:
         return chosen if len(chosen) == k else None
 
     def _pick_hosts_pa(self, anchor_rack, job):
-        """Power-aware, foresight gang pick. Fill the anchor rack first, then spill to
-        the racks with the most projected headroom, accepting a host ONLY if the node
-        keeps that rack's projected peak <= feasible budget. Returns hosts
-        (len == num_nodes) or None if the job can't be placed power-safely right now
-        (-> it stays queued: admission control emerges from the constraint)."""
+        """Find a safe rack-contiguous ring plan, preferring fewer occupied racks.
+
+        For m occupied racks and k nodes, the ring has m/k crossing edges (zero
+        for m=1). Search rack counts under that exact multiplier. Anchor-first
+        choices preserve locality without getting stuck in an unsafe 3+1 split
+        when a safe 2+2 split exists. Each fixed-m search has at most racks × k × k states.
+        """
         free = self.free_host_map()
         others = sorted((r for r in range(self.num_racks) if r != anchor_rack),
                         key=lambda r: self.project_rack_peak(r))
-        chosen, added = [], {}
-        for r in [anchor_rack] + others:
-            lo, hi = r * RACK_SIZE, min(self.num_hosts, (r + 1) * RACK_SIZE)
-            for h in range(lo, hi):
-                if not free[h]:
-                    continue
-                if self.project_rack_peak(r, job, added.get(r, 0) + 1) <= self._feas_budget:
-                    chosen.append(h)
-                    added[r] = added.get(r, 0) + 1
-                    if len(chosen) == job.num_nodes:
-                        return chosen
+        order = [anchor_rack] + others
+        hosts = {r: [h for h in range(r * RACK_SIZE, min(self.num_hosts, (r + 1) * RACK_SIZE))
+                     if free[h]] for r in order}
+        if sum(map(len, hosts.values())) < job.num_nodes:
+            return None
+        power = self._fine_window(job, 0)
+        for rack_count in range(1, min(job.num_nodes, self.num_racks) + 1):
+            cross = 0.0 if rack_count == 1 else rack_count / job.num_nodes
+            added_power = power * (1.0 + NET_COMM_TAX * cross) - NREL_IDLE_W
+            allowed = {
+                r: tuple(n for n in range(min(len(hosts[r]), job.num_nodes), 0, -1)
+                         if float((self._rack_base_fine(r) + n * added_power).max()) <= self._feas_budget)
+                for r in order
+            }
+
+            @lru_cache(maxsize=None)
+            def select(index, slots, nodes):
+                if slots == 0:
+                    return () if nodes == 0 else None
+                if index == len(order) or nodes < slots:
+                    return None
+                capacities = sorted((max(allowed[r]) for r in order[index:] if allowed[r]), reverse=True)
+                if len(capacities) < slots or sum(capacities[:slots]) < nodes:
+                    return None
+                rack = order[index]
+                for n in allowed[rack]:
+                    if n > nodes - slots + 1:
+                        continue
+                    suffix = select(index + 1, slots - 1, nodes - n)
+                    if suffix is not None:
+                        return ((rack, n),) + suffix
+                return select(index + 1, slots, nodes)
+
+            counts = select(0, rack_count, job.num_nodes)
+            if counts is not None:
+                return [host for rack, n in counts for host in hosts[rack][:n]]
         return None
 
     def place_job(self, job, anchor_rack, power_aware=True):
@@ -584,11 +659,13 @@ class GangEnv:
                  else self._pick_hosts(anchor_rack, job.num_nodes))
         if hosts is None:
             return False
-        trace = self._jarr_double_for(job)
-        ok = self.bridge.submitJob(job.job_id, self._jarr_int(hosts), trace,
-                                   float(job.dt_sec), int(job.duration_steps),
-                                   float(job.priority))
+        trace = self._packed_trace_for(job)
+        ok = self.bridge.submitJobPacked(job.job_id, self._jarr_int(hosts), trace,
+                                         float(job.dt_sec), int(job.duration_steps),
+                                         float(job.priority))
         if ok:
+            progress = self.bridge.getJobProgress(job.job_id)
+            job.progress_steps, job.remaining_duration_steps = int(progress[0]), int(progress[1])
             job.placed_hosts = hosts
             job.arrival_step_placed = self.step_idx
             self.running[job.job_id] = job
@@ -604,6 +681,12 @@ class GangEnv:
             self.ep_stats["place_wait_sum"] += wait
             self.ep_stats["place_n"] += 1
             self._first_wait.setdefault(job.job_id, wait)   # per-job, first placement
+            since = self._restart_wait_since.get(job.job_id)
+            if since is not None:
+                self._record_restart_breach(job)
+                self._restart_wait_total[job.job_id] = (
+                    self._restart_wait_total.get(job.job_id, 0) + self.step_idx - since)
+                del self._restart_wait_since[job.job_id]
             if wait > SLA_MAX_WAIT_STEPS:
                 self.ep_stats["sla_late"] += 1
                 self.ep_stats["sla_late_w"] += job.priority
@@ -611,6 +694,8 @@ class GangEnv:
         return bool(ok)
 
     def preempt_job(self, job):
+        progress = self.bridge.getJobProgress(job.job_id)
+        job.progress_steps, job.remaining_duration_steps = int(progress[0]), int(progress[1])
         self.bridge.preemptJob(job.job_id)
         self.running.pop(job.job_id, None)
         self._base_cache.clear()   # rack occupancy changed
@@ -618,6 +703,7 @@ class GangEnv:
         self._rackpy_cache = None  # A4/A2 cannot reuse pre-preemption rack state
         self._ckpt_nodes_step += job.num_nodes   # checkpoint cost ∝ nodes
         job.placed_hosts = None
+        self._restart_wait_since[job.job_id] = self.step_idx
         self.pending.append(job)                 # checkpoint-restart: requeue
         self.ep_stats["preempted"] += 1
 
@@ -633,12 +719,14 @@ class GangEnv:
         n = len(self._all_jobs)
         served = len(self._completed_ids)
         dropped_ids = {j.job_id for j in self._all_jobs} - self._completed_ids
-        late_ids = ((self._admission_breached | self._completion_late_ids)
+        late_ids = ((self._admission_breached | self._restart_breached |
+                     self._completion_late_ids)
                     & self._completed_ids)
         late = len(late_ids)
         dropped = n - served
         return dict(n=n, served=served, dropped=dropped, late=late,
                     admission_late=len(self._admission_breached),
+                    restart_late=len(self._restart_breached),
                     completion_late=len(self._completion_late_ids),
                     sla_viol=len(dropped_ids | late_ids))
 
@@ -673,6 +761,7 @@ class GangEnv:
             self.wait_steps[j.job_id] = self.wait_steps.get(j.job_id, 0) + 1
             wcost += j.priority
             self._record_admission_breach(j)
+            self._record_restart_breach(j)
 
         # --- normalized reward components (each ~O(1)/step) ---
         e_full = self.num_hosts * NREL_PEAK_W * INTERVAL_SEC / 3.6e6
@@ -698,16 +787,20 @@ class GangEnv:
                     newly_late += 1
         deadline_n = newly_late / max(1, len(self._all_jobs))
         sla_adm_n = self._sla_adm_cost_step / self._sla_priority_total
+        sla_restart_n = self._sla_restart_cost_step / self._sla_priority_total
         sla_comp_n = self._sla_comp_cost_step / self._sla_priority_total
         reward = (W_SERVE * serve_n - W_ENERGY * energy_n - W_VIOL * viol_n
                   - W_WAIT * wait_n - W_CKPT * ckpt_n
                   - network_n
                   - W_DEADLINE * deadline_n
                   - (W_SLA_BASE + self.sla_lambda_adm) * sla_adm_n
+                  - (W_SLA_BASE + self.sla_lambda_restart) * sla_restart_n
                   - (W_SLA_BASE + self.sla_lambda_comp) * sla_comp_n)
         self.ep_stats["sla_adm_cost"] += self._sla_adm_cost_step
+        self.ep_stats["sla_restart_cost"] += self._sla_restart_cost_step
         self.ep_stats["sla_comp_cost"] += self._sla_comp_cost_step
         self._sla_adm_cost_step = 0.0
+        self._sla_restart_cost_step = 0.0
         self._sla_comp_cost_step = 0.0
 
         self.ep_stats["wait_cost"] += wcost
@@ -739,6 +832,7 @@ class GangEnv:
             n_pending=len(self.pending), n_running=len(self.running),
             comp=dict(serve=serve_n, energy=energy_n, viol=viol_n,
                       wait=wait_n, ckpt=ckpt_n, sla_admission=sla_adm_n,
+                      sla_restart=sla_restart_n,
                       sla_completion=sla_comp_n, network=network_n),
         )
         self._prev_viol = viol
