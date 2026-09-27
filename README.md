@@ -8,13 +8,12 @@ to NREL/NLR 0.2-second power profiles. Helios power profiles are a proxy mapping
 not power measured from the Helios cluster; see [data provenance](DATA_PROVENANCE.md).
 
 This repository includes the recorded **five Alibaba seeds**, their settings,
-compact validation results and source hashes. The latest Helios actor repair is
+compact validation results and source hashes. The current Helios actor variant is
 an isolated patch: the base model/trainer remains the Alibaba version so the
 Helios change cannot silently alter Alibaba replication.
 
 - [Current run status and source-version limits](RUN_STATUS.md)
 - [Prepare and run recorded experiments](reproduction/README.md)
-- [Helios diagnosis and actor repair](docs/helios_conditioned_head.md)
 - [Five-seed Alibaba results](results/alibaba_5seeds.csv)
 
 Alibaba seeds 1–2 require the old trainer `d103…`; seeds 3–5 use the entropy

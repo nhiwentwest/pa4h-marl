@@ -39,12 +39,10 @@ MARL sequence 38.911 and pointwise 38.938; all three had zero rack violations.
 These are **prior-pilot results**, not results from the corrected actor.
 Raw compact tables are under `results/helios_prior_*.csv`.
 
-Largest investigated limitation: the linear rack score added shared job context
-to every action equally, cancelling its effect on relative softmax probabilities.
-The corrected nonlinear head also attaches the counterfactual utility to its
-corresponding action. See `docs/helios_conditioned_head.md` for evidence.
-The repair and finite-zero counterfactual loss are in
-`reproduction/helios_conditioned.patch`, applied only to an isolated Helios copy.
+The current Helios pilot uses a nonlinear job-conditioned rack scoring head
+with per-action counterfactual utility. Its architecture and numerical handling
+are recorded in `reproduction/helios_conditioned.patch`, applied only to an
+isolated Helios copy.
 This architecture requires fresh training, not an old checkpoint resume.
 
 Current server source:
