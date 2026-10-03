@@ -534,5 +534,7 @@
   "data_sha256": "f11325eda7595fb9180280eca3653ada40754fab17f5f51da0b1061989c65528",
   "source_sha256": "2c707b6d10805a33cc75f63015801e3f44eb427f59799f8230ec4684691b82fd",
   "decoder": "grouped_admission_completion",
-  "original_paper_decoder": false
+  "original_paper_decoder": false,
+  "best_checkpoint_episode": 72,
+  "latest_evaluation_episode": 120
 }
