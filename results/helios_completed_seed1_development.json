@@ -524,6 +524,109 @@
           "preempt_delta": 5
         }
       ]
+    },
+    {
+      "episode": 140,
+      "evaluation_kind": "requested_latest_checkpoint_audit",
+      "checkpoint_sha256": "d42fc71f8743dd4199db39f5afc4e6021e77e7639e18a658179c49debec11349",
+      "results": [
+        {
+          "hour": 1310,
+          "reward": 32.68132326995952,
+          "completed": 174,
+          "sla": 14,
+          "violations": 0,
+          "wait": 200.0,
+          "preempt": 5,
+          "queue_decisions": 0,
+          "queue_preemptions": 0,
+          "decoder": "grouped_admission_completion"
+        },
+        {
+          "hour": 1290,
+          "reward": 50.55231276909066,
+          "completed": 72,
+          "sla": 11,
+          "violations": 0,
+          "wait": 179.0,
+          "preempt": 15,
+          "queue_decisions": 0,
+          "queue_preemptions": 0,
+          "decoder": "grouped_admission_completion"
+        },
+        {
+          "hour": 1660,
+          "reward": -140.2765186823929,
+          "completed": 4161,
+          "sla": 406,
+          "violations": 0,
+          "wait": 42694.0,
+          "preempt": 5,
+          "queue_decisions": 2,
+          "queue_preemptions": 2,
+          "decoder": "grouped_admission_completion"
+        }
+      ],
+      "quality": {
+        "score": -0.10563496785804205,
+        "qualified": true,
+        "metric": "mean raw validation reward per simulator step",
+        "slices": [
+          {
+            "hour": 1310,
+            "qualified": true,
+            "feasible_completion_fraction": 1.0,
+            "sla_fraction": 0.07446808510638298,
+            "power": 0
+          },
+          {
+            "hour": 1290,
+            "qualified": true,
+            "feasible_completion_fraction": 1.0,
+            "sla_fraction": 0.1375,
+            "power": 0
+          },
+          {
+            "hour": 1660,
+            "qualified": true,
+            "feasible_completion_fraction": 0.9995195772279606,
+            "sla_fraction": 0.09752582272399712,
+            "power": 0
+          }
+        ]
+      },
+      "rpa_comparison": [
+        {
+          "hour": 1310,
+          "reward_delta": -0.40358678594837016,
+          "reward_relative_delta": -0.012198515433966026,
+          "completed_delta": 0,
+          "sla_delta": 0,
+          "power_delta": 0,
+          "wait_delta": 5.0,
+          "preempt_delta": 2
+        },
+        {
+          "hour": 1290,
+          "reward_delta": 0.23944865447823105,
+          "reward_relative_delta": 0.004759193472523614,
+          "completed_delta": 1,
+          "sla_delta": 1,
+          "power_delta": 0,
+          "wait_delta": -10.0,
+          "preempt_delta": 3
+        },
+        {
+          "hour": 1660,
+          "reward_delta": 258.3549152030106,
+          "reward_relative_delta": 0.6481047234154674,
+          "completed_delta": 0,
+          "sla_delta": -2363,
+          "power_delta": 0,
+          "wait_delta": -48993.0,
+          "preempt_delta": 4
+        }
+      ]
     }
   ],
   "schema": "helios-completed-queue-dev-snapshot-v1",
@@ -536,5 +639,6 @@
   "decoder": "grouped_admission_completion",
   "original_paper_decoder": false,
   "best_checkpoint_episode": 72,
-  "latest_evaluation_episode": 120
+  "latest_evaluation_episode": 140,
+  "latest_scheduled_evaluation_episode": 120
 }

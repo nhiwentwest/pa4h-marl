@@ -26,13 +26,17 @@ Source: [all five seeds](alibaba_5seeds.csv),
 
 This is the completed-only queue-relief variant with grouped-admission and
 completion-preference decoding. Among completed development evaluations through
-ep120, ep72 has the highest mean raw return per step
+ep140 (including the requested checkpoint audit), ep72 has the highest mean raw return per step
 (-0.05219813) while satisfying each window's proposed completion,
 SLA and power gate. RPA does not select the checkpoint. One checkpoint is used
 for all three rows. The 300-episode training run is still in progress; seed 2–5
 and heldout hours 1020/1030 have not been evaluated for this variant.
 Source: [development evaluations and RPA comparisons](helios_completed_seed1_development.json),
 [reproduction instructions](../reproduction/README.md).
+
+The ep140 audit satisfies the gates but scores **−0.10563497**, below ep72's
+**−0.05219813**. Queue SLA violations increase from **241 to 406**; gang
+completion improves from 71 to 72. The table therefore retains ep72.
 
 | Window / sampling | Reward ↑ | Completed jobs ↑ | SLA violations (%) ↓ | Wait cost ↓ | Preemptions ↓ | Power violations ↓ |
 |---|---:|---:|---:|---:|---:|---:|
