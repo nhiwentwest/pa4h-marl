@@ -1,0 +1,193 @@
+{
+  "schema": "helios-queue-relief-fresh300-v1",
+  "train_windows": [
+    {
+      "hour": 740,
+      "subsample": 1.0,
+      "jobs": 120,
+      "one_step_fraction": 0.7416666666666667,
+      "long_fraction": 0.16666666666666666,
+      "gang_fraction": 0.2,
+      "offered_capacity_ratio": 0.33515625,
+      "offered_nodes_peak": 37.0,
+      "overload_fraction": 0.0,
+      "earliest_finish_impossible": 8,
+      "feasible_completion_upper_bound": 112,
+      "stratum": "long"
+    },
+    {
+      "hour": 790,
+      "subsample": 0.75,
+      "jobs": 139,
+      "one_step_fraction": 0.7266187050359713,
+      "long_fraction": 0.12949640287769784,
+      "gang_fraction": 0.4172661870503597,
+      "offered_capacity_ratio": 0.4588541666666667,
+      "offered_nodes_peak": 45.0,
+      "overload_fraction": 0.0,
+      "earliest_finish_impossible": 12,
+      "feasible_completion_upper_bound": 127,
+      "stratum": "gang"
+    },
+    {
+      "hour": 890,
+      "subsample": 1.0,
+      "jobs": 4487,
+      "one_step_fraction": 0.9962112770225094,
+      "long_fraction": 0.0028972587474927567,
+      "gang_fraction": 0.0035658569199910855,
+      "offered_capacity_ratio": 0.6104166666666667,
+      "offered_nodes_peak": 100.0,
+      "overload_fraction": 0.16111111111111112,
+      "earliest_finish_impossible": 11,
+      "feasible_completion_upper_bound": 4476,
+      "stratum": "queue"
+    },
+    {
+      "hour": 570,
+      "subsample": 0.75,
+      "jobs": 131,
+      "one_step_fraction": 0.7175572519083969,
+      "long_fraction": 0.12213740458015267,
+      "gang_fraction": 0.33587786259541985,
+      "offered_capacity_ratio": 0.31258680555555557,
+      "offered_nodes_peak": 36.0,
+      "overload_fraction": 0.0,
+      "earliest_finish_impossible": 8,
+      "feasible_completion_upper_bound": 123,
+      "stratum": "long"
+    },
+    {
+      "hour": 760,
+      "subsample": 1.0,
+      "jobs": 167,
+      "one_step_fraction": 0.8023952095808383,
+      "long_fraction": 0.12574850299401197,
+      "gang_fraction": 0.49101796407185627,
+      "offered_capacity_ratio": 0.41414930555555557,
+      "offered_nodes_peak": 66.0,
+      "overload_fraction": 0.005555555555555556,
+      "earliest_finish_impossible": 12,
+      "feasible_completion_upper_bound": 155,
+      "stratum": "gang"
+    },
+    {
+      "hour": 860,
+      "subsample": 1.0,
+      "jobs": 1993,
+      "one_step_fraction": 0.6312092323130958,
+      "long_fraction": 0.009031610637230306,
+      "gang_fraction": 0.007024586051179127,
+      "offered_capacity_ratio": 0.8073784722222223,
+      "offered_nodes_peak": 70.0,
+      "overload_fraction": 0.08333333333333333,
+      "earliest_finish_impossible": 16,
+      "feasible_completion_upper_bound": 1977,
+      "stratum": "queue"
+    }
+  ],
+  "development_windows": [
+    {
+      "hour": 1310,
+      "subsample": 0.5,
+      "jobs": 188,
+      "one_step_fraction": 0.7872340425531915,
+      "long_fraction": 0.11702127659574468,
+      "gang_fraction": 0.11702127659574468,
+      "offered_capacity_ratio": 0.31631944444444443,
+      "offered_nodes_peak": 45.0,
+      "overload_fraction": 0.0,
+      "earliest_finish_impossible": 14,
+      "feasible_completion_upper_bound": 174,
+      "stratum": "long"
+    },
+    {
+      "hour": 1290,
+      "subsample": 0.75,
+      "jobs": 80,
+      "one_step_fraction": 0.3875,
+      "long_fraction": 0.3625,
+      "gang_fraction": 0.3625,
+      "offered_capacity_ratio": 0.44539930555555557,
+      "offered_nodes_peak": 47.0,
+      "overload_fraction": 0.0,
+      "earliest_finish_impossible": 8,
+      "feasible_completion_upper_bound": 72,
+      "stratum": "gang"
+    },
+    {
+      "hour": 1660,
+      "subsample": 1.0,
+      "jobs": 4163,
+      "one_step_fraction": 0.9983185202978622,
+      "long_fraction": 0.0016814797021378813,
+      "gang_fraction": 0.006725918808551525,
+      "offered_capacity_ratio": 0.5980034722222223,
+      "offered_nodes_peak": 76.0,
+      "overload_fraction": 0.08333333333333333,
+      "earliest_finish_impossible": 0,
+      "feasible_completion_upper_bound": 4163,
+      "stratum": "queue"
+    }
+  ],
+  "heldout_hours": [
+    1020,
+    1030
+  ],
+  "heldout_used": false,
+  "window_hours": 10,
+  "horizon": 180,
+  "total_episodes": 300,
+  "batch_episodes": 4,
+  "evaluation_episodes": [
+    24,
+    48,
+    72,
+    96,
+    120,
+    144,
+    168,
+    192,
+    216,
+    240,
+    264,
+    288,
+    300
+  ],
+  "evaluation_sla_multipliers": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "primary_decoder": "grouped_admission_completion",
+  "collect_new_states": true,
+  "initialization": "fresh seed-1 actors critics and optimizers; no checkpoint import",
+  "data": {
+    "path": "data/helios_completed.csv",
+    "sha256": "f11325eda7595fb9180280eca3653ada40754fab17f5f51da0b1061989c65528",
+    "outcome_policy": "completed",
+    "time_origin": "2020-03-20T16:06:15",
+    "all_observed_ablation": "data/helios_all_observed.csv"
+  },
+  "sampler": {
+    "completion_observable_within_horizon": true,
+    "schema": "distinct-job-timeband-reservoir-v1",
+    "cooldown_batches": 8,
+    "max_cases_per_batch": 2,
+    "max_plans_per_case": 3,
+    "reuse_requires": "identical prefix state, policy, recipe and SLA multipliers"
+  },
+  "selection_metric": "mean raw validation reward per simulator step",
+  "selection_uses_rpa": false,
+  "selection_constraints": {
+    "min_feasible_completion_fraction": 0.95,
+    "max_sla_fraction": 0.2,
+    "max_power_violations": 0
+  },
+  "selection_constraints_are_experiment_proposal": true,
+  "original_paper_requirement": false,
+  "branch_qualification": "same-policy measured completion/SLA/power; tied-best ordered plan mass preserved",
+  "queue_relief_enabled": true,
+  "method_extension": "experimental queue-risk contexts and restart reservations; same A4-A2-A3-A1 actors, STGNN, CTDE and anchor+DEFER",
+  "baseline_replay": "RPA measured in each prepared run before training; never used for checkpoint selection"
+}

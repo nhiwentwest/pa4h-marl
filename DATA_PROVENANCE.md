@@ -32,6 +32,23 @@ Helios jobs have `model_type=unknown`. Compatible power profiles are selected
 with a deterministic hash of the job ID. These profiles provide a reproducible
 power proxy; they are not power measurements from the Helios cluster.
 
+## Current completed-only Helios view
+
+The current experiment uses `python/helios_workload.py` from the isolated
+`reproduction/helios_completed/` package. It retains the common time origin
+`2020-03-20T16:06:15` before filtering outcomes, then selects COMPLETED jobs.
+This produces **313,953 jobs**, SHA-256
+`f11325eda7595fb9180280eca3653ada40754fab17f5f51da0b1061989c65528`.
+The earlier 427,148-job conversion above is a different outcome view.
+Cancelled, failed and timed-out jobs do not contribute fabricated completion labels.
+The all-observed view is an ablation; observed runtime does not identify its
+unobserved remaining work. Preparation checks the raw-source hash before converting.
+
+The simulator rounds measured durations to 300-second steps and allocates hosts
+exclusively, with four GPUs per host. A one-GPU source job therefore occupies
+one whole simulated host. SLA uses the configured 12-step limits; it is a
+simulator evaluation rule, not a service-level promise native to HeliosData.
+
 ## Alibaba conversion
 
 [data/convert_alibaba_v2020.py](data/convert_alibaba_v2020.py), with `--tags`,

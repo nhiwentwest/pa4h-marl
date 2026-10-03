@@ -20,3 +20,13 @@ experiment_runs/
 *.parquet
 data/**/*.csv
 *.sha256.tmp
+
+.pytest_cache/
+
+*.class
+
+*.jar
+
+._*
+
+reproduction_env.sh

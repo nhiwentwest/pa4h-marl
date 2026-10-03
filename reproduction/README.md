@@ -36,7 +36,58 @@ to source, workload and NREL profiles; each seed has a lock and an isolated cach
 Fresh replication results stay in the prepared directory, separate from the
 archived five-seed CSV in this repo. Generic historical scripts remain for reference.
 
-## Helios job-conditioned variant
+## Current Helios completed-only and queue-relief experiment
+
+Use the root README command with `prepare_helios_completed.py`. It leaves the
+base Alibaba files intact and verifies the separate Helios source manifest.
+Only seed 1 is recorded for this variant. The prepared directory refuses an
+overwrite; an existing run resumes through its launcher, not through preparation.
+
+Required data-root layout:
+
+```text
+helios_cluster_log.csv
+extracted/01_aggregated_datasets/training/metadata.csv
+extracted/01_aggregated_datasets/training/results/000000.parquet ...
+```
+
+Use the archived Earth CSV and all 41 profiles with the checksums in
+`data_manifest.json`. The generated CSV has 313,953 completed jobs, retains
+the pre-filter time origin and must hash to `f11325ed…`. No raw data or trained
+weights are distributed in this source package. Dependency pins record the
+Lightning environment (Python 3.12); use a compatible CPU Torch build and
+record deviations. Numerical parity across dependency versions is not promised.
+
+After preparing and building Java, run the targeted checks:
+
+```bash
+A4_BRANCH_RANK=1 QUEUE_RELIEF_ENABLED=1 PYTHONPATH=python python3 -m pytest -q \
+  tests python/tests/test_queue_relief.py python/tests/test_a4_return_credit.py \
+  python/test_grouped_admission.py python/test_completion_victim.py
+```
+
+The launcher uses 64 exclusive GPU hosts, 16 racks, 300-second steps and a
+180-step horizon. It evaluates RPA once, then trains newly initialized weights
+for 300 episodes. Each four-episode PPO update publishes an atomic checkpoint.
+Development evaluation runs every 24 episodes and at episode 300. Reuse of branch
+labels requires the same prefix, policy, recipe and SLA multipliers; missing SLA
+evidence is not filled in. Aliases preserve ordered host plans and tied-best mass.
+
+Train hours are 740, 790, 890, 570, 760 and 860; development hours are 1310,
+1290 and 1660, with the exact sampling fractions in
+`helios_completed/scripts/helios_completed_protocol.json`. Hours 1020/1030 remain
+held out. Branch collection never reads development or heldout states.
+The best checkpoint must satisfy each development window's proposed completion,
+SLA and power gate; among qualifying checkpoints, higher mean raw return per
+simulator step wins. RPA is a comparison, not a selection target. These gates
+are experiment proposals, not additional requirements claimed from the paper.
+
+For source and tests without data, prepare with `--source-only` instead of
+`--data-root`. `STOP_AFTER=4 bash scripts/run_helios_completed.sh` makes a bounded
+four-episode run while retaining the 300-episode recipe; rerun without that
+variable to continue. Training state semantics reject unrelated checkpoints.
+
+## Earlier Helios job-conditioned variant
 
 ```bash
 python3 reproduction/prepare.py --dataset helios --seed 1 \

@@ -24,3 +24,10 @@ for the Alibaba seed-1 sequence decoder, 64 hosts/16 racks, validation 980/5%.
 observations and random weights; it excludes state construction, masks,
 counterfactual projection and the bridge. Its scope does not measure full scheduling
 loop latency or counterfactual scalability.
+
+`helios_completed_seed1_development.json` is an interim deterministic development
+snapshot of the completed-only queue-relief variant, with dataset/source hashes,
+raw metrics, per-window gates and separate RPA comparisons. It uses grouped
+admission with completion preference. It is not a five-seed or heldout result,
+and does not replace the archived earlier Helios CSVs. Checkpoint weights and
+training logs are omitted. See `../reproduction/README.md` to run the source.

@@ -8,8 +8,7 @@ to NREL/NLR 0.2-second power profiles. Helios power profiles are a proxy mapping
 not power measured from the Helios cluster; see [data provenance](DATA_PROVENANCE.md).
 
 This repository includes the recorded **five Alibaba seeds**, their settings,
-compact validation results and source hashes. The current Helios actor variant is
-an isolated patch: the base model/trainer remains the Alibaba version so the
+compact validation results and source hashes. Helios variants are isolated source packages: the base model/trainer remains the Alibaba version so the
 Helios change cannot silently alter Alibaba replication.
 
 - [Recorded experiment protocols](RUN_STATUS.md)
@@ -21,10 +20,35 @@ variant `ba7c…`. Preparation restores and verifies the appropriate source in a
 separate directory. Seed 3's historical resume at episode 224 must be distinguished
 from a fresh run using the variant from the beginning.
 
-The Helios job-conditioned seed-1 experiment is in progress as of 2026-09-27.
-The committed Helios CSV files describe the **prior** 300-episode pilot, which did not outperform RPA
-on stress reward. They do not establish performance of the job-conditioned architecture.
-Seeds 2–5 remain pending that pilot's evaluation.
+The latest Helios experiment (2026-10-03) uses completed-only Earth jobs,
+six disjoint training windows, three development windows and measured
+completion/SLA/power qualification for A4 branch labels. Its source is frozen in
+`reproduction/helios_completed/`, including queue-capacity relief through the
+existing A2 → A3 → A1 actors. This queue-risk mechanism and reserved restarts are
+an experimental extension; the original paper used a power-risk detector.
+The evaluation decoder is grouped admission with completion preference.
+It is not a reproduction of the paper's two original decoders.
+
+Seed 1 starts with fresh actors, critics and optimizers and targets 300 episodes.
+The committed [development snapshot](results/helios_completed_seed1_development.json)
+is interim evidence, not a completed five-seed Helios result. Earlier
+`helios_prior_*.csv` files and the job-conditioned patch describe separate variants.
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r reproduction/helios_completed/requirements.txt
+python3 reproduction/prepare_helios_completed.py \
+  --destination /tmp/pa4h-helios-completed-seed1 \
+  --data-root /path/to/data --python "$PWD/.venv/bin/python"
+cd /tmp/pa4h-helios-completed-seed1
+mvn package dependency:copy-dependencies -DskipTests
+bash scripts/run_helios_completed.sh
+```
+
+Preparation checks the raw Earth CSV and NREL profiles, generates the completed-only
+CSV and verifies its recorded checksum. Run the launcher again in the same prepared
+directory to resume that run's complete training state. See the
+[reproduction instructions](reproduction/README.md) for tests, data layout and selection rules.
 
 ## Dependencies and checks
 

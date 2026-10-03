@@ -24,7 +24,37 @@ has a different training history. The earlier seed 1–2 implementation can
 produce non-finite masked-entropy gradients on some runtimes; matching source
 hashes alone does not guarantee an identical or numerically stable replay.
 
-## Helios: job-conditioned variant
+## Current Helios: completed-only queue relief (2026-10-03)
+
+The separate package `reproduction/helios_completed/` records the current
+`helios-queue-relief-v4` experiment: fresh seed 1, 300 target episodes, six train
+windows and three dev windows. The committed development snapshot records
+completed evaluations only; check its `training_complete` field rather than
+assuming that a target of 300 means the run has finished. Seeds 2–5 and heldout
+evaluation are not included in this experiment's evidence.
+
+A4 branch labels preserve completion, unique SLA count and power relative to
+the same deterministic continuation policy. Raw branch returns are unchanged.
+Missing metrics are unknown. Queue relief adds observable queue-risk contexts
+and one reserved restart per eligible long gang job. A2 selects a rack, A3
+selects a victim and A1 can WAIT or PREEMPT; queue-only actions receive team
+GAE/PPO credit without a fabricated local teacher. Queue ordering activates
+after a loan and only for a cluster-sized backlog. This is an experimental
+extension to the power-only detector, with unchanged STGNN, CTDE and
+anchor + DEFER action space.
+
+Selection requires per-window feasible completion ≥95%, unique SLA fraction
+≤20%, and zero power violations. Best among qualified checkpoints uses mean
+raw development return per step; RPA does not choose the checkpoint. The
+grouped-admission/completion-preference decoder is explicitly different from
+the two decoders in the draft. These thresholds are proposed experiment gates.
+
+The published entry point changes workspace paths to relative/configured paths
+and replays RPA instead of reading another run's cached baseline. The manifest
+retains original runtime source and entry-point hashes and lists these changes.
+Alibaba source, seed-specific patches and archived results remain unchanged.
+
+## Earlier Helios: job-conditioned variant
 
 The Helios variant uses a nonlinear rack scoring head with job context and
 per-action counterfactual utility. The source changes are packaged in
